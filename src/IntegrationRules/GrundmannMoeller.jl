@@ -1,6 +1,9 @@
 using Combinatorics
 
 """
+    
+    *** not working code created by chatgpt. needs fixing ***
+
     grundmann_moeller(d, s)
 
 Erzeuge Integrationsknoten und Gewichte der Grundmann–Möller-Regel
