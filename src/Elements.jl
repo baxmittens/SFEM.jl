@@ -5,51 +5,52 @@ using StaticPolynomials
 import DensePolynomials
 import DensePolynomials: DensePoly, coordinates, evaluate, fast_binomial
 
-@inline function unsafe_mono_next_grlex(x::NTuple{M,Int}, m::Int) where {M}
-    i = 0
-    @inbounds for j = m:-1:1
-        if x[j] > 0
-            i = j
-            break
-        end
-    end
-
-    if i == 0
-        return Base.setindex(x, 1, m)
-    elseif i == 1
-        t   = x[1] + 1
-        im1 = m
-    else
-        t   = x[i]
-        im1 = i - 1
-    end
-
-    x = Base.setindex(x, 0, i)
-    x = Base.setindex(x, x[im1] + 1, im1)
-    x = Base.setindex(x, x[m] + t - 1, m)
-    return x
-end
-
-@generated function monomial_exponents(::Type{Val{N}}, ::Type{Val{K}}) where {N,K}
-    len = binomial(N+K, K)
-    function build_indices(N,K)
-        
-        buf = Vector{NTuple{N,Int}}()
-        f = ntuple(_->0, N)
-        push!(buf, f)
-        for _ in 2:len
-            f = unsafe_mono_next_grlex(f, N)
-            push!(buf, f)
-        end
-        return Tuple(buf)
-    end
-    indices = build_indices(N,K)
-    return :( ($(indices...),) )
-end
+#@inline function unsafe_mono_next_grlex(x::NTuple{M,Int}, m::Int) where {M}
+#    i = 0
+#    @inbounds for j = m:-1:1
+#        if x[j] > 0
+#            i = j
+#            break
+#        end
+#    end
+#
+#    if i == 0
+#        return Base.setindex(x, 1, m)
+#    elseif i == 1
+#        t   = x[1] + 1
+#        im1 = m
+#    else
+#        t   = x[i]
+#        im1 = i - 1
+#    end
+#
+#    x = Base.setindex(x, 0, i)
+#    x = Base.setindex(x, x[im1] + 1, im1)
+#    x = Base.setindex(x, x[m] + t - 1, m)
+#    return x
+#end
+#
+#@generated function monomial_exponents(::Type{Val{N}}, ::Type{Val{K}}) where {N,K}
+#    len = binomial(N+K, K)
+#    function build_indices(N,K)
+#        
+#        buf = Vector{NTuple{N,Int}}()
+#        f = ntuple(_->0, N)
+#        push!(buf, f)
+#        for _ in 2:len
+#            f = unsafe_mono_next_grlex(f, N)
+#            push!(buf, f)
+#        end
+#        return Tuple(buf)
+#    end
+#    indices = build_indices(N,K)
+#    return :( ($(indices...),) )
+#end
 
 @generated function monomials(::Type{Val{N}}, ::Type{Val{K}}) where {N,K}
-    exps = monomial_exponents(N, K)
-    tup = ntuple(i -> SPolynomial{N,Float64}(exps[i], SVector(1.0)), length(exps))
+    #exps = monomial_exponents(Val{N}, Val{K})
+    fbnk = binomial(N+K,K)
+    tup = ntuple(i->begin; dp=DensePoly{N, Float64}(fbnk); dp.c[i]=1.0;dp end, fbnk)
     return :( $tup )
 end
 
@@ -65,16 +66,12 @@ end
     monos = monomials(Val{N}, Val{P})
     nmonos = length(monos)
     MN = M * nmonos
-
-    # Auswertung der Monome an den Knoten
     evals = [:(evaluate($(monos[i]), nodes[:, $j])) for j in 1:M, i in 1:nmonos]
-
     shape_exprs = Vector{Any}()
     for i in 1:M
         coeffs = [:(Vinv[$k, $i]) for k in 1:nmonos]
-        push!(shape_exprs, :(SPolynomial{N,Float64}(SVector{$nmonos,Float64}($(coeffs...)))))
+        push!(shape_exprs, :(DensePoly{N,Float64}($P, Float64[$(coeffs...)])))
     end
-
     return quote
         V = SMatrix{$M,$nmonos,Float64,$MN}($(evals...))
         Vinv = inv(V)
