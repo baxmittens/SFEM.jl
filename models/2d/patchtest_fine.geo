@@ -20,5 +20,5 @@ Line Loop(1) = {1, 2, 3, 4};
 Plane Surface(1) = {1};
 
 // Physikalische Gruppen (optional, nützlich für FE-Software)
-Physical Surface("Domain") = {1};
 Physical Line("Boundary") = {1,2,3,4};
+Physical Surface("Domain") = {1};

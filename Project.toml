@@ -1,5 +1,19 @@
+name = "SFEM"
+uuid = "9025d195-ecaf-4e26-a5eb-f947d2bca681"
+version = "0.1.0"
+
 [deps]
+DensePolynomials = "4caa147c-24d7-11e9-04f8-b31ba1333eda"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MUMPS = "55d2b088-9f4e-11e9-26c0-150b02ea6a46"
 MshReader = "64cd2da2-d71d-431a-81e3-4cf84ef169dd"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 StaticPolynomials = "62e018b1-6e46-5407-a5a7-97d4fbcae734"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+
+[compat]
+LinearAlgebra = "1.11.0"
+julia = "0.7, 1"
