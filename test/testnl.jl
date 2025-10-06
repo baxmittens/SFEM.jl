@@ -9,7 +9,7 @@ using ProfileView
 meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath)
 nips = 3
-ts = collect(0.0:0.01:0.05)
+ts = collect(0.0:-0.01:-0.05)
 nts = length(ts)
 els = Tri3[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), nips, nts) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,Tri3Ref,nips,ts)
@@ -21,7 +21,7 @@ f = Figure(size=(1000,600));
 mainview = f[1,1] = GridLayout()
 controlview = f[2,1] = GridLayout()
 ax = Axis(f[1,1], autolimitaspect = 1)
-timeslider = Slider(controlview[1,2], range = ts, startvalue = first(ts))
+timeslider = Slider(controlview[1,2], range = ts, startvalue = first(ts), update_while_dragging=false)
 timeslidertext = map!(Observable{Any}(), timeslider.value) do val
 	return "t=$val"
 end
@@ -37,6 +37,14 @@ Y = dom.mesh.nodes[:,2]
 oU = map!(Observable{Any}(), timeslider.value) do val
 	ti = findfirst(x->x==val, dom.ts)
 	return dom.postdata.postdata[ti].U
+end
+Xd = map!(Observable{Any}(), oU) do U
+	Ux = U[dom.dofmap[1,:]]
+	X .+ Ux
+end
+Yd = map!(Observable{Any}(), oU) do U
+	Uy = U[dom.dofmap[2,:]]
+	Y .+ Uy
 end
 points = map!(Observable{Any}(), oU) do U
 	Ux = U[dom.dofmap[1,:]]
@@ -66,32 +74,41 @@ postData = map!(Observable{Any}(), itemmenu.selection, fieldmenu.selection, time
 	ti = findfirst(x->x==val, dom.ts)
 	if item == "U"
 		if field == "xx"
-			dom.postdata.postdata[ti].U[dom.dofmap[1,:]]
+			dom.postdata.postdata[ti].U[dom.dofmap[1,:]].+eps()
 		elseif field == "yy"
-			dom.postdata.postdata[ti].U[dom.dofmap[2,:]]
+			dom.postdata.postdata[ti].U[dom.dofmap[2,:]].+eps()
 		else
-			zeros(length(dom.postdata.postdata[ti].U[dom.dofmap[2,:]]))
+			zeros(length(dom.postdata.postdata[ti].U[dom.dofmap[2,:]])).+eps()
 		end
 	elseif item == "σ"
 		if field == "xx"
-			dom.postdata.postdata[ti].σ[:,1]
+			dom.postdata.postdata[ti].σ[:,1].+eps()
 		elseif field == "yy"
-			dom.postdata.postdata[ti].σ[:,2]
+			dom.postdata.postdata[ti].σ[:,2].+eps()
 		else
-			dom.postdata.postdata[ti].σ[:,3]
+			dom.postdata.postdata[ti].σ[:,3].+eps()
 		end
 	else
 		if field == "xx"
-			abs.(dom.postdata.postdata[ti].εpl[:,1])
+			abs.(dom.postdata.postdata[ti].εpl[:,1]).+eps()
 		elseif field == "yy"
-			abs.(dom.postdata.postdata[ti].εpl[:,2])
+			abs.(dom.postdata.postdata[ti].εpl[:,2]).+eps()
 		else
-			abs.(dom.postdata.postdata[ti].εpl[:,3])
+			abs.(dom.postdata.postdata[ti].εpl[:,3]).+eps()
 		end
 	end
 	
 end
 
-mh = mesh!(ax, points, hcat(conn...)', color=postData)#, colormap=:viridis)
-Colorbar(mainview[1,2], mh)
+postData_limits = map!(Observable{Any}(), postData) do u
+	lims = minimum(u),maximum(u)
+	if abs(lims[2]-lims[1]) < 1e-6
+		return -1.0,1.0
+	else
+		return lims
+	end
+end
+
+trich = tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)')
+Colorbar(mainview[1,2], limits=postData_limits)
 f

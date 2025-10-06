@@ -54,7 +54,7 @@ mutable struct IPStateVars2D
 	function IPStateVars2D(nts)
 		σ = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:nts]
 		εpl = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:nts]
-		return new(σ, εpl, SVector{3,Float64}(0.,0.,0.))
+		return new(σ, εpl, SVector{3,Float64}(0.,0.,0.),SVector{3,Float64}(0.,0.,0.))
 	end
 end
 function saveHistory!(ipstate::IPStateVars2D, actt)
@@ -94,4 +94,28 @@ end
 
 include("./Elements/elementstiffness.jl")
 
+function updateTrialStates!(state::IPStateVars2D, 𝐁, nodalU, actt)
+	εtr = 𝐁*nodalU
+	εpl = state.εpl[actt]
+	state.σtr,state.εpltr = response(εtr, εpl)
+	return nothing
+end
+
+function updateTrialStates!(el::Tri3{NIPs}, dofmap, U, shapeFuns, actt) where {NIPs}
+	d𝐍s = shapeFuns.d𝐍s
+	wips = shapeFuns.wips
+	elX0 = el.nodes
+	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
+	nodalU = U[eldofs]
+	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
+	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	invJs = ntuple(ip->inv(Js[ip]), NIPs)
+	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
+	𝐁s = ntuple(ip->Blin0(Tri3, grad𝐍s[ip]), NIPs)
+	foreach((ipstate,𝐁)->updateTrialStates!(ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	return nothing
+end
+
 end #module Elements
+

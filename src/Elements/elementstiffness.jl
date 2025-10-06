@@ -21,77 +21,52 @@ function MaterialStiffness(::Type{Val{2}}, E, ν)
 	return fac*SMatrix{3,3,Float64,9}(1-ν,ν,0.,ν,1-ν,0.,0.,0.,(1-2*ν)/2.0)
 end
 
-function response(εtr, εpl)
-	E = 1e6
-	ν = 0.25
-	ℂ = MaterialStiffness(Val{2}, E, ν)
-	return ℂ*εtr, εpl
-end
+#function response(εtr, εpl)
+#	E = 1e6
+#	ν = 0.25
+#	ℂ = MaterialStiffness(Val{2}, E, ν)
+#	return ℂ*εtr, εpl
+#end
 
 using LinearAlgebra, StaticArrays
 
-using StaticArrays, LinearAlgebra
+function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
+    # Materialparameter
+    E  = 1e6
+    ν  = 0.25
+    σy = 200.0
+    G  = E / (2*(1+ν))
 
-#function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
-#	E=1e6
-#	ν=0.25
-#	σy=200.0
-#	G = E / (2*(1+ν))
-#    ℂ = MaterialStiffness(Val{2}, E, ν)
-#    σtr = ℂ * (εtr-εpl)
-#    s = σtr .- (1/3)*(σtr[1] + σtr[2]) .* SVector(1.0, 1.0, 0.0)
-#    seq = sqrt(1.5 * (s[1]^2 + s[2]^2 + 0.5*s[3]^2))
-#    f = seq - σy
-#    if f <= 0
-#        σ = σtr
-#        εpltr = εpl
-#    else
-#        Δγ = f / (3*G)
-#        n = s / (sqrt(s[1]^2 + s[2]^2 + 0.5*s[3]^2) + eps())
-#        s_new = s - 2*G*Δγ * n
-#        σ = s_new .+ (1/3)*(σtr[1] + σtr[2]) .* SVector(1.0, 1.0, 0.0)
-#        εpltr = εpl .+ Δγ * (3/2) .* n
-#    end
-#    return σ, εpltr
-#end
+    # 2D Elastizitätsmatrix (plane strain)
+    ℂ = MaterialStiffness(Val{2}, E, ν)
 
-#function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
-#    # Materialparameter
-#    E  = 1e6
-#    ν  = 0.25
-#    σy = 200.0
-#    G  = E / (2*(1+ν))
-#
-#    # 2D Elastizitätsmatrix (plane strain)
-#    ℂ = MaterialStiffness(Val{2}, E, ν)
-#
-#    # Trialspannung
-#    σtr = ℂ * (εtr - εpl)
-#
-#    # Deviatorische Spannung (2D)
-#    p = (σtr[1] + σtr[2]) / 3
-#    s = σtr .- SVector(p, p, 0.0)
-#
-#    # Von Mises Spannung
-#    seq = sqrt(1.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2) / 2)
-#
-#    f = seq - σy
-#
-#    if f <= 0
-#        # elastisch
-#        σ = σtr
-#        εpltr = εpl
-#    else
-#        # plastisch
-#        n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2) + eps())
-#        Δγ = f / (3G)  # ohne Verfestigung
-#        s_new = s - 2G * Δγ * n
-#        σ = s_new .+ SVector(p, p, 0.0)
-#        εpltr = εpl .+ Δγ * n
-#    end
-#
-#    return σ, εpltr
-#end
+    # Trialspannung
+    σtr = ℂ * (εtr - εpl)
+
+    # Deviatorische Spannung (2D)
+    p = (σtr[1] + σtr[2]) / 3
+    s = σtr .- SVector(p, p, 0.0)
+
+    # Von Mises Spannung
+    seq = sqrt(1.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2) / 2)
+
+    f = seq - σy
+
+    if f <= 0
+        # elastisch
+        σ = σtr
+        εpltr = εpl
+    else
+        # plastisch
+        n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2) + eps())
+        Δγ = f / (3G)  # ohne Verfestigung
+        s_new = s - 2G * Δγ * n
+        σ = s_new .+ SVector(p, p, 0.0)
+        εpltr = εpl .+ Δγ * n
+    end
+
+    return σ, εpltr
+end
 
 
 @generated function grad(f::Function,σ::SVector{3,Float64})
@@ -100,7 +75,7 @@ using StaticArrays, LinearAlgebra
 		push!(exprs, :((f(σ+αs[:,$j])[1]-fσ)./h))
 	end
 	return quote
-		h = 10.0^-12
+		h = 10.0^-6
 		αs = SMatrix{3,3,Float64,9}(LinearAlgebra.I)*h
 		fσ = f(σ)[1]
 		σs = $(Expr(:tuple, exprs...))
@@ -108,35 +83,36 @@ using StaticArrays, LinearAlgebra
 	end
 end
 
-function ipStiffness(state, 𝐁, nodalUtr, εpl, detJ, w)
+function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w)
+	E = 1e6
+	ν = 0.25
+	ℂ = MaterialStiffness(Val{2}, E, ν)
 	𝐁tr = transpose(𝐁)
-	εtr = 𝐁*nodalUtr
-	ℂ = grad(x->response(x, εpl), εtr)
+	εtr = 𝐁*nodalU
+	ℂnum = grad(x->response(x, εpl), εtr)
 	σtr,εpltr = response(εtr, εpl)
 	dVw = detJ*w
-	state.σtr = σtr
-	state.εpltr = εpltr
-	return 𝐁tr*ℂ*𝐁*dVw
+	return 𝐁tr*ℂnum*𝐁*dVw
 end
 
-function ipRint(state, 𝐁, nodalU, εpl, detJ, w)
+function ipRint(state, 𝐁, nodalU, εpl, σ, detJ, w)
 	E = 1e6
 	ν = 0.25
 	𝐁tr = transpose(𝐁)
 	ℂ = MaterialStiffness(Val{2}, E, ν)
 	ε = 𝐁*nodalU
-	#σ = state.σtr
 	σ = ℂ * (ε-εpl)
+	#display(hcat(σ,state.σtr))
 	dVw = detJ*w
-	return 𝐁tr*σ*dVw
+	return 𝐁tr*state.σtr*dVw
 end
 
-@generated function elStiffness(::Type{Val{NIPs}}, state, 𝐁s, nodalUtr, nodalU, εpls, detJs, wips) where {NIPs}
+@generated function elStiffness(::Type{Val{NIPs}}, state, 𝐁s, nodalU, εpls, σs, detJs, wips) where {NIPs}
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
-            Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalUtr, εpls[$ip], detJs[$ip], wips[$ip])
+			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], σs[$ip], detJs[$ip], wips[$ip])
+            Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -153,7 +129,6 @@ function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIP
 	elX0 = el.nodes
 	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
 	nodalU = U[eldofs]
-	nodalUtr = nodalU+ΔU[eldofs]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
@@ -162,10 +137,12 @@ function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIP
 	𝐁s = ntuple(ip->Blin0(Tri3, grad𝐍s[ip]), NIPs)
 	if actt == 1
 		εpls = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
+		σs = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
 	else
 		εpls = ntuple(ip->el.state.state[ip].εpl[actt-1], NIPs)
+		σs = ntuple(ip->el.state.state[ip].σtr, NIPs)
 	end
-	return elStiffness(Val{NIPs}, el.state.state, 𝐁s, nodalUtr, nodalU, εpls, detJs, wips)
+	return elStiffness(Val{NIPs}, el.state.state, 𝐁s, nodalU, εpls, σs, detJs, wips)
 end
 
 function ipMass(𝐍, detJ, w)
