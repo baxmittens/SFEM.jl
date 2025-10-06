@@ -3,12 +3,15 @@ using SparseArrays
 function assemble!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{Tri3}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs::Int, ndofs_el::Int) where {N,NN}
     k = 1
     nels = length(els)
-    fill!(F,0.0)
-    for (i,el) in enumerate(els)
+    nnz_per_el = ndofs_el * ndofs_el
+    
+    #@threads for i in 1:nels
+    for i in 1:nels
+        el = els[i]
         Ke  = elMats[i][1]
-        Rint  = elMats[i][2]
-        eldofs = dofmap[SVector{2,Int}(1,2),el.inds]
-        F[eldofs[:]] .-= Rint
+        @inbounds eldofs = SVector{6,Int}(dofmap[1, el.inds[1]], dofmap[2, el.inds[1]], dofmap[1, el.inds[2]], dofmap[2, el.inds[2]], dofmap[1, el.inds[3]], dofmap[2, el.inds[3]])
+        #eldofs = dofmap[SVector{2,Int}(1,2), el.inds]
+        k = (i-1)*nnz_per_el + 1        
         @simd for a in 1:ndofs_el
             @inbounds for b in 1:ndofs_el
                 I[k] = eldofs[a]
@@ -18,6 +21,15 @@ function assemble!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, F::Vector
             end
         end
     end
+
+    fill!(F,0.0)
+    for i in 1:nels
+        el = els[i]
+        Rint  = elMats[i][2]
+        eldofs = dofmap[SVector{2,Int}(1,2), el.inds]
+        @inbounds F[eldofs[:]] .-= Rint
+    end
+
     return sparse(I, J, V, ndofs, ndofs)
 end
 

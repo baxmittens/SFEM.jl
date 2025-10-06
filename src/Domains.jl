@@ -1,9 +1,11 @@
 module Domains
 
+using Base.Threads
+using SparseArrays
 using StaticArrays
 using LinearAlgebra
 using Printf
-using MUMPS, MPI
+#using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
@@ -79,42 +81,41 @@ function setBCandUCMaps!(dom::Domain, Uval)
 	return nothing
 end
 
-ENV["OMP_NUM_THREADS"] = 6
-using MUMPS
-using SparseArrays
-using MPI
-using LinearAlgebra
 
-function solveMUMPS!(A, rhs::AbstractVector{Float64})
-
-    if !MPI.Initialized()
-        MPI.Init()
-    end
-    comm = MPI.COMM_WORLD
- 
-    rhs_work = copy(rhs)
-
-    icntl = default_icntl[:]
-    icntl[1:4] .= 0               # keine Ausgabe
-    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
-    
-    MUMPS.associate_matrix!(m, A; unsafe = false)
-    MUMPS.factorize!(m)
-    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
-    x = MUMPS.mumps_solve(m)
-    MUMPS.finalize!(m)
-    return x
-end
-
-
+#function solveMUMPS!(A, rhs::AbstractVector{Float64})
+#
+#    if !MPI.Initialized()
+#        MPI.Init()
+#    end
+#    comm = MPI.COMM_WORLD
+# 
+#    rhs_work = copy(rhs)
+#
+#    icntl = default_icntl[:]
+#    icntl[1:4] .= 0               # keine Ausgabe
+#    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
+#    
+#    MUMPS.associate_matrix!(m, A; unsafe = false)
+#    MUMPS.factorize!(m)
+#    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
+#    x = MUMPS.mumps_solve(m)
+#    MUMPS.finalize!(m)
+#    return x
+#end
 
 function solve!(dom::Domain)
-	I,J,V,U,ΔU,F,els,ndofs = dom.mma.I,dom.mma.J,dom.mma.V,dom.mma.U,dom.mma.ΔU,dom.mma.F,dom.els,dom.ndofs
+	I,J,V,U,ΔU,F,els,ndofs,elMats = dom.mma.I,dom.mma.J,dom.mma.V,dom.mma.U,dom.mma.ΔU,dom.mma.F,dom.els,dom.ndofs,dom.mma.elMats
 	dofmap,ucmap,cmap,shapeFuns,ndofs_el,actt = dom.dofmap, dom.ucmap, dom.cmap, dom.shapeFuns,dom.ndofs_el, dom.actt
-	elMats = Tuple{SMatrix{6, 6, Float64, 36}, SVector{6, Float64}}[elStiffness(el, dofmap, U, ΔU, shapeFuns, actt) for el in els];
-	Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
-
-	ΔU[ucmap] = Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
+	@info "Integrate element matrices"
+	#@time elMats = Tuple{SMatrix{6, 6, Float64, 36}, SVector{6, Float64}}[elStiffness(el, dofmap, U, ΔU, shapeFuns, actt) for el in els];
+	@time @threads for i in eachindex(els)
+    	el = els[i]
+    	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
+	end
+	@info "Assemble global matrices"
+	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
+	@info "Solve"
+	@time ΔU[ucmap] = Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
 	#x = solveMUMPS!(Kglob[ucmap, ucmap], F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])
 	#ΔU[ucmap] = x[:,1]
 	#println(norm(ΔU[ucmap])," ",norm(x))
@@ -152,17 +153,21 @@ end
 function newtonraphson!(dom)
 	init_loadstep!(dom, dom.ts[dom.actt])
 	normdU = Inf
-	println("converg. history")
 	numit = 0
+	str = "\nconvergence history"
+	@info "Start Newton-Raphson iteration"
 	while normdU>1e-7 && numit < 10
+		@info "Newton-Raphson iteration $(numit+1)"
 		solve!(dom)
 		updateTrialStates!(dom)
 		normdU = norm(dom.mma.ΔU)
 		fill!(dom.mma.ΔU,0.0)
 		strnormdU = @sprintf("%.4e", normdU) 
-		println("normdU = $strnormdU")
+		str *= "\nstep $(numit+1): normdU = $strnormdU"
 		numit += 1
 	end
+	println(str)
+	println()
 end
 
 function tsolve!(dom::Domain)
@@ -171,9 +176,16 @@ function tsolve!(dom::Domain)
 	for t in dom.ts
 		@info "newtonraphson solve t=$t"
 		dom.actt += 1
-		@time newtonraphson!(dom)
-		saveHistory!(dom)
-		postSolve!(dom)
+		t1 = time()
+		newtonraphson!(dom)
+		@info "Save history variables"
+		@time saveHistory!(dom)
+		@info "Postprocessing"
+		@time postSolve!(dom)
+		t2 = time()
+		timestr = @sprintf("%.2f", t2-t1)
+		@info "Analysis time $timestr seconds"
+		println()
 	end
 end
 

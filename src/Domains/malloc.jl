@@ -10,6 +10,7 @@ struct Malloc
 	Vm::Vector{Float64}
 	σ::Matrix{Float64}
 	εpl::Matrix{Float64}
+	elMats::Vector{Tuple{SMatrix{6,6,Float64,36}, SVector{6,Float64}}}
 	function Malloc(nels,ndofs,ndofs_el,ennodes,nnodes)
 		U = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
@@ -24,7 +25,8 @@ struct Malloc
 		Vm = Vector{Float64}(undef, nnz_total_mass)
 		σ = zeros(Float64, nnodes, ennodes)
 		εpl = zeros(Float64, nnodes, ennodes)
-		return new(U,ΔU,F,I,J,V,Im,Jm,Vm,σ,εpl)
+		elMats = Vector{Tuple{SMatrix{6,6,Float64,36}, SVector{6,Float64}}}(undef, nels)
+		return new(U,ΔU,F,I,J,V,Im,Jm,Vm,σ,εpl,elMats)
 	end
 end
 
