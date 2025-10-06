@@ -14,7 +14,10 @@ nts = length(ts)
 els = Tri3[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), nips, nts) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,Tri3Ref,nips,ts)
 tsolve!(dom)
+plotting = false
 
+
+if plotting
 using GLMakie
 
 f = Figure(size=(1000,600));
@@ -111,4 +114,5 @@ end
 
 trich = tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)')
 Colorbar(mainview[1,2], limits=postData_limits)
-f
+display(f)
+end
