@@ -1,4 +1,7 @@
-ENV["OMP_NUM_THREADS"] = 6
+ENV["OMP_NUM_THREADS"] = "6"
+ENV["MKL_NUM_THREADS"] = "6"
+ENV["OPENBLAS_NUM_THREADS"] = "6"
+
 using StaticArrays
 using SFEM
 using SFEM.Elements: Tri3Ref, Tri6Ref, Tri3, Tri6
@@ -6,7 +9,8 @@ using SFEM.MeshReader: GmshMesh
 using SFEM.Domains: Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
 #using ProfileView
 
-meshfilepath = "../models/2d/beam.msh"
+#meshfilepath = "../models/2d/beam.msh"
+meshfilepath = "/Users/maximilianbittens/Documents/GitHub/SFEM/models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath)
 nips = 3
 ts = collect(0.0:-0.01:-0.05)

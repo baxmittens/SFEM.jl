@@ -1,11 +1,13 @@
 module Domains
 
+ENV["OMP_NUM_THREADS"] = 6
+
 using Base.Threads
 using SparseArrays
 using StaticArrays
 using LinearAlgebra
 using Printf
-#using MUMPS, MPI
+using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
@@ -82,26 +84,27 @@ function setBCandUCMaps!(dom::Domain, Uval)
 end
 
 
-#function solveMUMPS!(A, rhs::AbstractVector{Float64})
-#
-#    if !MPI.Initialized()
-#        MPI.Init()
-#    end
-#    comm = MPI.COMM_WORLD
-# 
-#    rhs_work = copy(rhs)
-#
-#    icntl = default_icntl[:]
-#    icntl[1:4] .= 0               # keine Ausgabe
-#    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
-#    
-#    MUMPS.associate_matrix!(m, A; unsafe = false)
-#    MUMPS.factorize!(m)
-#    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
-#    x = MUMPS.mumps_solve(m)
-#    MUMPS.finalize!(m)
-#    return x
-#end
+function solveMUMPS!(A, rhs::AbstractVector{Float64})
+
+    if !MPI.Initialized()
+        MPI.Init()
+    end
+    comm = MPI.COMM_WORLD
+ 
+    rhs_work = copy(rhs)
+
+    icntl = default_icntl[:]
+    icntl[1:4] .= 0
+    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
+    
+    MUMPS.associate_matrix!(m, A; unsafe = false)
+    MUMPS.factorize!(m)
+    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
+    x = MUMPS.mumps_solve(m)
+    MUMPS.finalize!(m)
+    MPI.Barrier(comm)
+    return x
+end
 
 function solve!(dom::Domain)
 	I,J,V,U,ΔU,F,els,ndofs,elMats = dom.mma.I,dom.mma.J,dom.mma.V,dom.mma.U,dom.mma.ΔU,dom.mma.F,dom.els,dom.ndofs,dom.mma.elMats
@@ -117,10 +120,11 @@ function solve!(dom::Domain)
 	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
 	@info "Solve"
 	t2 = time()
-	@time ΔU[ucmap] = Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
-	t3 = time()
-	#x = solveMUMPS!(Kglob[ucmap, ucmap], F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])
+	@time ΔU[ucmap] .= Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
+	#@time x = solveMUMPS!(Kglob[ucmap, ucmap], F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])
 	#ΔU[ucmap] = x[:,1]
+	
+	t3 = time()
 	#println(norm(ΔU[ucmap])," ",norm(x))
 	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
 	@info "Solver time: $percsolver%"

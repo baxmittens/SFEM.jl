@@ -7,7 +7,7 @@ function smallDet(M::SMatrix{3,3,Float64,9})
 end
 
 function Blin0(::Type{Tri3}, gradN::SMatrix{3,2,Float64,6})
-	return SMatrix{3,6,Float64,18}(
+	@inbounds return SMatrix{3,6,Float64,18}(
 		gradN[1,1],0.0,gradN[1,2],
 		0.0,gradN[1,2],gradN[1,1],
 		gradN[2,1],0.0,gradN[2,2],
@@ -30,7 +30,7 @@ end
 
 using LinearAlgebra, StaticArrays
 
-function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
+@inbounds function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
     # Materialparameter
     E  = 1e6
     ν  = 0.25
@@ -77,16 +77,13 @@ end
 	return quote
 		h = 10.0^-6
 		αs = SMatrix{3,3,Float64,9}(LinearAlgebra.I)*h
-		fσ = f(σ)[1]
-		σs = $(Expr(:tuple, exprs...))
-		return SMatrix{3,3,Float64,9}(σs[1]...,σs[2]...,σs[3]...)
+		@inbounds fσ = f(σ)[1]
+		@inbounds σs = $(Expr(:tuple, exprs...))
+		@inbounds return SMatrix{3,3,Float64,9}(σs[1]...,σs[2]...,σs[3]...)
 	end
 end
 
 function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w)
-	E = 1e6
-	ν = 0.25
-	ℂ = MaterialStiffness(Val{2}, E, ν)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
 	ℂnum = grad(x->response(x, εpl), εtr)
@@ -102,7 +99,6 @@ function ipRint(state, 𝐁, nodalU, εpl, σ, detJ, w)
 	ℂ = MaterialStiffness(Val{2}, E, ν)
 	ε = 𝐁*nodalU
 	σ = ℂ * (ε-εpl)
-	#display(hcat(σ,state.σtr))
 	dVw = detJ*w
 	return 𝐁tr*state.σtr*dVw
 end
@@ -111,8 +107,8 @@ end
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], σs[$ip], detJs[$ip], wips[$ip])
-            Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
+			@inbounds Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], σs[$ip], detJs[$ip], wips[$ip])
+            @inbounds Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -123,7 +119,7 @@ end
 	end
 end
 
-function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIPs}
+@inbounds function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIPs}
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
@@ -154,7 +150,7 @@ end
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Me += ipMass(𝐍s[$ip], detJs[$ip], wips[$ip])
+			@inbounds Me += ipMass(𝐍s[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -164,7 +160,7 @@ end
 	end
 end
 
-function elMass(el::Tri3{NIPs}, dofmap, shapeFuns) where {NIPs}
+@inbounds function elMass(el::Tri3{NIPs}, dofmap, shapeFuns) where {NIPs}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
@@ -185,8 +181,8 @@ end
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			σe += elPost(𝐍s[$ip], state[$ip].σ[actt], detJs[$ip], wips[$ip])
-			εple += elPost(𝐍s[$ip], state[$ip].εpl[actt], detJs[$ip], wips[$ip])
+			@inbounds σe += elPost(𝐍s[$ip], state[$ip].σ[actt], detJs[$ip], wips[$ip])
+			@inbounds εple += elPost(𝐍s[$ip], state[$ip].εpl[actt], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -197,7 +193,7 @@ end
 	end
 end
 
-function elPost(el::Tri3{NIPs}, dofmap, shapeFuns, actt) where {NIPs}
+@inbounds function elPost(el::Tri3{NIPs}, dofmap, shapeFuns, actt) where {NIPs}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
