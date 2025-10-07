@@ -108,6 +108,7 @@ function solve!(dom::Domain)
 	dofmap,ucmap,cmap,shapeFuns,ndofs_el,actt = dom.dofmap, dom.ucmap, dom.cmap, dom.shapeFuns,dom.ndofs_el, dom.actt
 	@info "Integrate element matrices"
 	#@time elMats = Tuple{SMatrix{6, 6, Float64, 36}, SVector{6, Float64}}[elStiffness(el, dofmap, U, ΔU, shapeFuns, actt) for el in els];
+	t1 = time()
 	@time @threads for i in eachindex(els)
     	el = els[i]
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
@@ -115,11 +116,14 @@ function solve!(dom::Domain)
 	@info "Assemble global matrices"
 	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
 	@info "Solve"
+	t2 = time()
 	@time ΔU[ucmap] = Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
+	t3 = time()
 	#x = solveMUMPS!(Kglob[ucmap, ucmap], F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])
 	#ΔU[ucmap] = x[:,1]
 	#println(norm(ΔU[ucmap])," ",norm(x))
-
+	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
+	@info "Solver time: $percsolver%"
 	U .+= ΔU
 	return nothing
 end
