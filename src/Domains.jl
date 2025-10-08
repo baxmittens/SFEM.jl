@@ -117,14 +117,14 @@ end
 #    return x
 #end
 
-function solve!(::Type{Pardiso}, x, A, rhs::AbstractVector{Float64})
+function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
 	Pardiso.set_nprocs!(ps, 10)
 	Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
 
-function solve!(::Type{UMPFPack}, x, A, rhs::AbstractVector{Float64})
+function solve!(::Type{UMPFPackSolver}, x, A, rhs::AbstractVector{Float64})
 	x .= A \ rhs
 	return nothing
 end
