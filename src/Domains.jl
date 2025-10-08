@@ -7,7 +7,7 @@ using SparseArrays
 using StaticArrays
 using LinearAlgebra
 using Printf
-using MUMPS, MPI
+#using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
@@ -15,6 +15,10 @@ import ..IntegrationRules: gaussSimplex
 
 include("./Domains/assembler.jl")
 include("./Domains/malloc.jl")
+
+abstract type LinearSolver; end
+abstract type Pardiso <: LinearSolver; end
+abstract type UMPFPack <: LinearSolver; end
 
 mutable struct Domain
 	mma::Malloc
@@ -33,6 +37,7 @@ mutable struct Domain
 	actt::Int
 	MMat::SparseMatrixCSC{Float64, Int64}
 	postdata::PostData
+	SOLVER::DataType
 	function Domain(mesh, els::Vector{Tri3}, RefEl::Type{T}, nips, ts) where {T<:GenericRefElement}
 		refel = RefEl()
 		nels = length(els)
@@ -46,7 +51,12 @@ mutable struct Domain
 		shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
 		elMMats = SMatrix{3, 3, Float64, 9}[elMass(el, dofmap, shapeFuns) for el in els];
 		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, dofmap, els, elMMats, nnodes, length(els[1].inds))
-		return new(mma, mesh, refel, els, nnodes, ndofs, nels, ndofs_el, dofmap, cmap, ucmap, shapeFuns, ts, 0, MMat, PostData(ndofs, nnodes, length(ts)))
+		if haskey(ENV, "MKLROOT")
+			SOLVER = Pardiso
+		else
+			SOLVER = UMPFPack
+		end
+		return new(mma, mesh, refel, els, nnodes, ndofs, nels, ndofs_el, dofmap, cmap, ucmap, shapeFuns, ts, 0, MMat, PostData(ndofs, nnodes, length(ts)), SOLVER)
 	end
 end
 
@@ -84,26 +94,38 @@ function setBCandUCMaps!(dom::Domain, Uval)
 end
 
 
-function solveMUMPS!(A, rhs::AbstractVector{Float64})
+#function solveMUMPS!(A, rhs::AbstractVector{Float64})
+#
+#    if !MPI.Initialized()
+#        MPI.Init()
+#    end
+#    comm = MPI.COMM_WORLD
+# 
+#    rhs_work = copy(rhs)
+#
+#    icntl = default_icntl[:]
+#    icntl[1:4] .= 0
+#    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
+#    
+#    MUMPS.associate_matrix!(m, A; unsafe = false)
+#    MUMPS.factorize!(m)
+#    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
+#    x = MUMPS.mumps_solve(m)
+#    MUMPS.finalize!(m)
+#    MPI.Barrier(comm)
+#    return x
+#end
 
-    if !MPI.Initialized()
-        MPI.Init()
-    end
-    comm = MPI.COMM_WORLD
- 
-    rhs_work = copy(rhs)
+function solve!(::Type{Pardiso}, x, A, rhs::AbstractVector{Float64})
+	ps = MKLPardisoSolver()
+	set_nprocs!(ps, 10)
+	solve!(ps, x, A, rhs)
+	return nothing
+end
 
-    icntl = default_icntl[:]
-    icntl[1:4] .= 0
-    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
-    
-    MUMPS.associate_matrix!(m, A; unsafe = false)
-    MUMPS.factorize!(m)
-    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
-    x = MUMPS.mumps_solve(m)
-    MUMPS.finalize!(m)
-    MPI.Barrier(comm)
-    return x
+function solve!(::Type{UMPFPack}, x, A, rhs::AbstractVector{Float64})
+	x .= A \ rhs
+	return nothing
 end
 
 function solve!(dom::Domain)
@@ -120,12 +142,8 @@ function solve!(dom::Domain)
 	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
 	@info "Solve"
 	t2 = time()
-	@time ΔU[ucmap] .= Kglob[ucmap, ucmap] \ ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])	
-	#@time x = solveMUMPS!(Kglob[ucmap, ucmap], F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap])
-	#ΔU[ucmap] = x[:,1]
-	
+	@time solve!(ΔU[ucmap], Kglob[ucmap, ucmap], ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap]))
 	t3 = time()
-	#println(norm(ΔU[ucmap])," ",norm(x))
 	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
 	@info "Solver time: $percsolver%"
 	U .+= ΔU

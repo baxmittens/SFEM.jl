@@ -10,7 +10,7 @@ using SFEM.Domains: Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
 #using ProfileView
 
 #meshfilepath = "../models/2d/beam.msh"
-meshfilepath = "/Users/maximilianbittens/Documents/GitHub/SFEM/models/2d/beam.msh"
+meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath)
 nips = 3
 ts = collect(0.0:-0.01:-0.05)
