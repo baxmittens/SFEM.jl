@@ -1,7 +1,5 @@
 module Domains
 
-ENV["OMP_NUM_THREADS"] = 6
-
 using Base.Threads
 using SparseArrays
 using StaticArrays
