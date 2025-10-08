@@ -7,7 +7,7 @@ using SparseArrays
 using StaticArrays
 using LinearAlgebra
 using Printf
-#using MUMPS, MPI
+using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
