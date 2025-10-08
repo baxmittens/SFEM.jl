@@ -7,6 +7,7 @@ using SFEM
 using SFEM.Elements: Tri3Ref, Tri6Ref, Tri3, Tri6
 using SFEM.MeshReader: GmshMesh
 using SFEM.Domains: Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
+using Pardiso
 #using ProfileView
 
 #meshfilepath = "../models/2d/beam.msh"
