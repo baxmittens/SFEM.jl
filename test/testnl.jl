@@ -18,7 +18,7 @@ ts = collect(0.0:-0.01:-0.05)
 nts = length(ts)
 els = Tri3[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), nips, nts) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,Tri3Ref,nips,ts)
-dom.SOLVER = SFEM.Domains.UMPFPackSolver
+#dom.SOLVER = SFEM.Domains.UMPFPackSolver
 tsolve!(dom)
 plotting = true
 
