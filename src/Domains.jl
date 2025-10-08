@@ -120,7 +120,7 @@ end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
-	Pardiso.set_nprocs!(ps, ENV["MKL_NUM_THREADS"])
+	Pardiso.set_nprocs!(ps, parse(Int,ENV["MKL_NUM_THREADS"]))
 	@time Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
