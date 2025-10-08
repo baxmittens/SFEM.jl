@@ -20,6 +20,7 @@ include("./Domains/malloc.jl")
 abstract type LinearSolver; end
 abstract type PardisoSolver <: LinearSolver; end
 abstract type UMPFPackSolver <: LinearSolver; end
+abstract type MUMPSSolver <: LinearSolver; end
 
 mutable struct Domain
 	mma::Malloc
@@ -95,32 +96,32 @@ function setBCandUCMaps!(dom::Domain, Uval)
 end
 
 
-#function solveMUMPS!(A, rhs::AbstractVector{Float64})
-#
-#    if !MPI.Initialized()
-#        MPI.Init()
-#    end
-#    comm = MPI.COMM_WORLD
-# 
-#    rhs_work = copy(rhs)
-#
-#    icntl = default_icntl[:]
-#    icntl[1:4] .= 0
-#    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
-#    
-#    MUMPS.associate_matrix!(m, A; unsafe = false)
-#    MUMPS.factorize!(m)
-#    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
-#    x = MUMPS.mumps_solve(m)
-#    MUMPS.finalize!(m)
-#    MPI.Barrier(comm)
-#    return x
-#end
+function solveMUMPS!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
+
+    if !MPI.Initialized()
+        MPI.Init()
+    end
+    comm = MPI.COMM_WORLD
+ 
+    rhs_work = copy(rhs)
+
+    icntl = default_icntl[:]
+    icntl[1:4] .= 0
+    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
+    
+    MUMPS.associate_matrix!(m, A; unsafe = false)
+    MUMPS.factorize!(m)
+    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
+    MUMPS.mumps_solve!(x, m)
+    MUMPS.finalize!(m)
+    MPI.Barrier(comm)
+    return x
+end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
 	Pardiso.set_nprocs!(ps, 20)
-	Pardiso.solve!(ps, x, A, rhs)
+	@time Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
 
