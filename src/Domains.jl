@@ -146,8 +146,9 @@ function solve!(dom::Domain)
 
 	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
 	Klgobuc = Kglob[ucmap, ucmap]
-	x = @view ΔU[ucmap]
+	x = similar(ΔU[ucmap])
 	@time solve!(dom.SOLVER, x, Klgobuc, rhs)
+	ΔU[ucmap] .= x
 
 	t3 = time()
 	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
