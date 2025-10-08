@@ -106,7 +106,7 @@ function solve!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
     rhs_work = copy(rhs)
 
     icntl = default_icntl[:]
-    icntl[1:4] .= 0
+    #icntl[1:4] .= 0
     m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
     
     MUMPS.associate_matrix!(m, A; unsafe = false)
