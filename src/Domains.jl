@@ -11,15 +11,15 @@ using Printf
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
-using Pardiso
+import Pardiso
 
 
 include("./Domains/assembler.jl")
 include("./Domains/malloc.jl")
 
 abstract type LinearSolver; end
-abstract type Pardiso <: LinearSolver; end
-abstract type UMPFPack <: LinearSolver; end
+abstract type PardisoSolver <: LinearSolver; end
+abstract type UMPFPackSolver <: LinearSolver; end
 
 mutable struct Domain
 	mma::Malloc
@@ -53,9 +53,9 @@ mutable struct Domain
 		elMMats = SMatrix{3, 3, Float64, 9}[elMass(el, dofmap, shapeFuns) for el in els];
 		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, dofmap, els, elMMats, nnodes, length(els[1].inds))
 		if haskey(ENV, "MKLROOT")
-			SOLVER = Pardiso
+			SOLVER = PardisoSolver
 		else
-			SOLVER = UMPFPack
+			SOLVER = UMPFPackSolver
 		end
 		return new(mma, mesh, refel, els, nnodes, ndofs, nels, ndofs_el, dofmap, cmap, ucmap, shapeFuns, ts, 0, MMat, PostData(ndofs, nnodes, length(ts)), SOLVER)
 	end
@@ -118,9 +118,9 @@ end
 #end
 
 function solve!(::Type{Pardiso}, x, A, rhs::AbstractVector{Float64})
-	ps = MKLPardisoSolver()
-	set_nprocs!(ps, 10)
-	solve!(ps, x, A, rhs)
+	ps = Pardiso.MKLPardisoSolver()
+	Pardiso.set_nprocs!(ps, 10)
+	Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
 
