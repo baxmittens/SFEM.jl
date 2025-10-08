@@ -7,7 +7,8 @@ using LinearAlgebra
 using Printf
 #using MUMPS, MPI
 import ..MeshReader: GmshMesh
-import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!, σ_avg
+import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, 
+	Tri, Tri3, Tri6, elMass, elPost, updateTrialStates!, σ_avg, RefEl, flatten_tuple
 import ..IntegrationRules: gaussSimplex
 import Pardiso
 
@@ -20,7 +21,7 @@ abstract type PardisoSolver <: LinearSolver; end
 abstract type UMPFPackSolver <: LinearSolver; end
 abstract type MUMPSSolver <: LinearSolver; end
 
-mutable struct Domain{T<:GenericElement}
+mutable struct Domain{T}
 	mma::Malloc
 	mesh::GmshMesh
 	refel::GenericRefElement
@@ -38,19 +39,20 @@ mutable struct Domain{T<:GenericElement}
 	MMat::SparseMatrixCSC{Float64, Int64}
 	postdata::PostData
 	SOLVER::DataType
-	function Domain(mesh, els::Vector{T}, RefEl::Type{T}, nips, ts) where {T<:GenericRefElement}
-		refel = RefEl()
+	function Domain(mesh, els::Vector{T}, nips, ts) where {T}
+		refel = RefEl(T)
 		nels = length(els)
 		nnodes = size(mesh.nodes,1)
 		ndofs = size(mesh.nodes,1)*dim(refel)
 		ndofs_el = length(els[1].inds)*dim(els[1])
 		dofmap = convert(Matrix{Int}, reshape(1:ndofs,2,:))
-		mma = Malloc(nels,ndofs,ndofs_el, length(els[1].inds), nnodes)
+		mma = Malloc(nels,ndofs, ndofs_el, Val{length(els[1].inds)}, nnodes)
 		cmap = Vector{Int}()
 		ucmap = Vector{Int}()
 		shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
-		elMMats = SMatrix{3, 3, Float64, 9}[elMass(el, dofmap, shapeFuns) for el in els];
-		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, dofmap, els, elMMats, nnodes, length(els[1].inds))
+		elMMats = [elMass(el, dofmap, shapeFuns) for el in els];
+		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, dofmap, els, elMMats, nnodes)
+		#MMat = spzeros(10,10)
 		if haskey(ENV, "MKLROOT")
 			SOLVER = PardisoSolver
 		else
@@ -141,7 +143,7 @@ function solve!(dom::Domain)
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
 	end
 	@info "Assemble global matrices"
-	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
+	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs)
 	@info "Solve"
 	t2 = time()
 
@@ -164,9 +166,10 @@ function updateTrialStates!(dom)
 	end
 end
 
+
 function postSolve!(dom::Domain)
-	@time elPosts = Tuple{SMatrix{3, 3, Float64, 9},SMatrix{3, 3, Float64, 9}}[elPost(el, dom.dofmap, dom.shapeFuns, dom.actt) for el in dom.els];
-	assemblePost!(dom.mma.σ, dom.mma.εpl, dom.dofmap, dom.els, elPosts, dom.nnodes, length(dom.els[1].inds))
+	@time elPosts = [elPost(el, dom.dofmap, dom.shapeFuns, dom.actt) for el in dom.els];
+	assemblePost!(dom.mma.σ, dom.mma.εpl, dom.dofmap, dom.els, elPosts, dom.nnodes)
 	dom.postdata.postdata[dom.actt].U .= dom.mma.U
 	dom.postdata.postdata[dom.actt].σ .= dom.MMat \ dom.mma.σ
 	dom.postdata.postdata[dom.actt].εpl .= dom.MMat \ dom.mma.εpl

@@ -6,14 +6,28 @@ function smallDet(M::SMatrix{3,3,Float64,9})
 	@inbounds return (M[1,1]*(M[2,2]*M[3,3]-M[2,3]*M[3,2]) - M[1,2]*(M[2,1]*M[3,3]-M[2,3]*M[3,1]) + M[1,3]*(M[2,1]*M[3,2]-M[2,2]*M[3,1]))
 end
 
-function Blin0(::Type{Tri3}, gradN::SMatrix{3,2,Float64,6})
-	return SMatrix{3,6,Float64,18}(
-		gradN[1,1],0.0,gradN[1,2],
-		0.0,gradN[1,2],gradN[1,1],
-		gradN[2,1],0.0,gradN[2,2],
-		0.0,gradN[2,2],gradN[2,1],
-		gradN[3,1],0.0,gradN[3,2],
-		0.0,gradN[3,2],gradN[3,1])
+#function Blin0(::Type{Tri3{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
+#	return SMatrix{3,6,Float64,18}(
+#		gradN[1,1],0.0,gradN[1,2],
+#		0.0,gradN[1,2],gradN[1,1],
+#		gradN[2,1],0.0,gradN[2,2],
+#		0.0,gradN[2,2],gradN[2,1],
+#		gradN[3,1],0.0,gradN[3,2],
+#		0.0,gradN[3,2],gradN[3,1])
+#end
+function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]
+    ]
+end
+function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0 			gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0	
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]	0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
+    ]
 end
 
 function MaterialStiffness(::Type{Val{2}}, E, ν)
@@ -106,7 +120,9 @@ function ipRint(state, 𝐁, nodalU, εpl, σ, detJ, w)
 	return 𝐁tr*state.σtr*dVw
 end
 
-@generated function elStiffness(::Type{Val{NIPs}}, state, 𝐁s, nodalU, εpls, σs, detJs, wips) where {NIPs}
+@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, σs, detJs, wips) where {NIPs,NNODES,DIM}
+	DIMTimesNNODES = DIM*NNODES
+	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
@@ -115,25 +131,25 @@ end
 		end)
 	end
 	return quote
-		Rel = zero(SVector{6, Float64})
-        Kel = zero(SMatrix{6,6,Float64,36})
+		Rel = zero(SVector{$DIMTimesNNODES, Float64})
+        Kel = zero(SMatrix{$DIMTimesNNODES,$DIMTimesNNODES,Float64,$DIMTimesNNODESSQ})
         $body
         return Kel, Rel
 	end
 end
 
-function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIPs}
+function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, ΔU, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
+	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	nodalU = U[eldofs]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	invJs = ntuple(ip->inv(Js[ip]), NIPs)
 	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	𝐁s = ntuple(ip->Blin0(Tri3, grad𝐍s[ip]), NIPs)
+	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
 	if actt == 1
 		εpls = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
 		σs = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
@@ -141,7 +157,7 @@ function elStiffness(el::Tri3{NIPs}, dofmap, U, ΔU, shapeFuns, actt) where {NIP
 		εpls = ntuple(ip->el.state.state[ip].εpl[actt-1], NIPs)
 		σs = ntuple(ip->el.state.state[ip].σtr, NIPs)
 	end
-	return elStiffness(Val{NIPs}, el.state.state, 𝐁s, nodalU, εpls, σs, detJs, wips)
+	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, σs, detJs, wips)
 end
 
 function ipMass(𝐍, detJ, w)
@@ -149,7 +165,8 @@ function ipMass(𝐍, detJ, w)
 	return 𝐍*transpose(𝐍)*dVw
 end
 
-@generated function elMass(::Type{Val{NIPs}}, 𝐍s, detJs, wips) where {NIPs}
+@generated function elMass(::Type{Val{NIPs}},::Type{Val{NNODES}}, 𝐍s, detJs, wips) where {NIPs,NNODES}
+	NNODESSQ = NNODES*NNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
@@ -157,22 +174,22 @@ end
 		end)
 	end
 	return quote
-        Me = zero(SMatrix{3,3,Float64,9})
+        Me = zero(SMatrix{NNODES,NNODES,Float64,$NNODESSQ})
         $body
         return Me
 	end
 end
 
-function elMass(el::Tri3{NIPs}, dofmap, shapeFuns) where {NIPs}
+function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, shapeFuns) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
+	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
-	return elMass(Val{NIPs}, 𝐍s, detJs, wips)
+	return elMass(Val{NIPs}, Val{NNODES}, 𝐍s, detJs, wips)
 end
 
 function elPost(𝐍, vals, detJ, w)
@@ -180,7 +197,8 @@ function elPost(𝐍, vals, detJ, w)
 	return 𝐍*transpose(vals)*dVw
 end
 
-@generated function elPost(::Type{Val{NIPs}}, state, 𝐍s, detJs, wips, actt) where {NIPs}
+@generated function elPost(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
+	NNODES3 = NNODES*3
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
@@ -189,21 +207,22 @@ end
 		end)
 	end
 	return quote
-        σe = zero(SMatrix{3,3,Float64,9})
-        εple = zero(SMatrix{3,3,Float64,9})
+        σe = zero(SMatrix{NNODES,3,Float64,$NNODES3})
+        εple = zero(SMatrix{NNODES,3,Float64,$NNODES3})
         $body
         return σe,εple
 	end
 end
 
-function elPost(el::Tri3{NIPs}, dofmap, shapeFuns, actt) where {NIPs}
+
+function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
+	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
-	return elPost(Val{NIPs}, el.state.state, 𝐍s, detJs, wips, actt)
+	return elPost(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
 end

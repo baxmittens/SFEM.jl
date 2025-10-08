@@ -39,11 +39,9 @@ dim(el::C) where {C<:GenericRefElement} = size(el.nodes,1)
 nnodes(el::C) where {C<:GenericRefElement} = size(el.nodes,2)
 
 
-abstract type GenericElement
+abstract type GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 end
-abstract type ContinuumElement <: GenericElement
-end
-abstract type TriElement <: ContinuumElement
+abstract type ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 end
 
 mutable struct IPStateVars2D
@@ -51,9 +49,9 @@ mutable struct IPStateVars2D
 	εpl::Vector{SVector{3,Float64}}
 	σtr::SVector{3,Float64}
 	εpltr::SVector{3,Float64}
-	function IPStateVars2D(nts)
-		σ = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:nts]
-		εpl = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:nts]
+	function IPStateVars2D(::Type{Val{NTs}}) where {NTs}
+		σ = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
+		εpl = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
 		return new(σ, εpl, SVector{3,Float64}(0.,0.,0.),SVector{3,Float64}(0.,0.,0.))
 	end
 end
@@ -65,29 +63,38 @@ end
 
 mutable struct ElementStateVars2D{NIPs}
 	state::NTuple{NIPs, IPStateVars2D}
-	function ElementStateVars2D(nips,nts)
-		return new{nips}(ntuple(i->IPStateVars2D(nts), nips))
+	function ElementStateVars2D(::Type{Val{NIPs}},::Type{Val{NTs}}) where {NIPs, NTs}
+		return new{NIPs}(ntuple(i->IPStateVars2D(Val{NTs}), NIPs))
 	end
 end
 σ_avg(state::ElementStateVars2D{NIPs}, actt::Int) where {NIPs} = sum(ntuple(ip->state.state[ip].σ[actt][1], NIPs))/NIPs
 
-struct Tri3{NIPs} <: TriElement
-	nodes::SMatrix{2,3,Float64,6}
-	inds::SVector{3,Int}
+struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
+	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
+	inds::SVector{NNODES,Int}
 	state::ElementStateVars2D{NIPs}
-	Tri3(nodes,inds,nips,nts) = new{nips}(nodes, inds, ElementStateVars2D(nips,nts))
 end
-struct Tri6{NIPs} <: TriElement
-	nodes::SMatrix{2,6,Float64,12}
-	inds::SVector{6,Int}
-	state::ElementStateVars2D{NIPs}
-	Tri6(nodes,inds,nips,nts) = new{nips}(nodes, inds, ElementStateVars2D(nips,nts))
-end
-dim(el::C) where {C<:GenericElement} = size(el.nodes,1)
-nnodes(el::C) where {C<:GenericElement} = size(el.nodes,2)
-nips(state::ElementStateVars2D{NIPs}) where {NIPs} = Val{NIPs}()
-nips(el::C) where {C<:GenericElement} = nips(el.state)
+#struct Tri6{NIPs} <: TriElement
+#	nodes::SMatrix{2,6,Float64,12}
+#	inds::SVector{6,Int}
+#	state::ElementStateVars2D{NIPs}
+#	Tri6(nodes,inds,nips,nts) = new{nips}(nodes, inds, ElementStateVars2D(nips,nts))
+#end
+dim(el::Tri) = 2
+nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes} = NNODES
+#nips(state::ElementStateVars2D{NIPs}) where {NIPs} = Val{NIPs}()
+#nips(el::Tri{NNODES, NIPs, DIMtimesNNodes})  where {NNODES, NIPs, DIMtimesNNodes} = Val{NIPs}
 σ_avg(el::C, actt::Int) where {C<:GenericElement} = σ_avg(el.state, actt)
+RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
+RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
+
+function Tri3(nodes,inds,::Type{Val{NIPs}},::Type{Val{NTs}}) where {NIPs,NTs} 
+	return Tri{2,3,NIPs,6}(nodes, inds, ElementStateVars2D(Val{NIPs},Val{NTs}))
+end
+
+function Tri6(nodes,inds,::Type{Val{NIPs}},::Type{Val{NTs}}) where {NIPs,NTs}
+	return Tri{2,6,NIPs,12}(nodes, inds, ElementStateVars2D(Val{NIPs},Val{NTs}))
+end
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}
 	foreach(ipstate->saveHistory!(ipstate,actt), el.state.state)
@@ -103,7 +110,7 @@ function updateTrialStates!(state::IPStateVars2D, 𝐁, nodalU, actt)
 	return nothing
 end
 
-function updateTrialStates!(el::Tri3{NIPs}, dofmap, U, shapeFuns, actt) where {NIPs}
+function updateTrialStates!(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
@@ -114,7 +121,7 @@ function updateTrialStates!(el::Tri3{NIPs}, dofmap, U, shapeFuns, actt) where {N
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	invJs = ntuple(ip->inv(Js[ip]), NIPs)
 	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	𝐁s = ntuple(ip->Blin0(Tri3, grad𝐍s[ip]), NIPs)
+	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
 	foreach((ipstate,𝐁)->updateTrialStates!(ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
 	return nothing
 end
