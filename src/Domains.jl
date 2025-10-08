@@ -11,6 +11,7 @@ using Printf
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
+using Pardiso
 
 
 include("./Domains/assembler.jl")
