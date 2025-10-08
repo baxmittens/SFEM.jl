@@ -96,7 +96,7 @@ function setBCandUCMaps!(dom::Domain, Uval)
 end
 
 
-function solveMUMPS!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
+function solve!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
 
     if !MPI.Initialized()
         MPI.Init()
