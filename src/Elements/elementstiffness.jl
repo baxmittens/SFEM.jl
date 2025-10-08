@@ -44,11 +44,13 @@ function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
     σtr = ℂ * (εtr - εpl)
 
     # Deviatorische Spannung (2D)
-    p = (σtr[1] + σtr[2]) / 3
+    p = (σtr[1] + σtr[2]) / 3.0
     s = σtr .- SVector(p, p, 0.0)
 
     # Von Mises Spannung
     seq = sqrt(1.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2) / 2)
+    #J2 = 0.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2)
+    #seq = sqrt(3 * J2)
 
     f = seq - σy
 
@@ -59,7 +61,8 @@ function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
     else
         # plastisch
         n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2) + eps())
-        Δγ = f / (3G)  # ohne Verfestigung
+        #n = s / sqrt(2 * J2)
+        Δγ = f / (3.0*G)  # ohne Verfestigung
         s_new = s - 2G * Δγ * n
         σ = s_new .+ SVector(p, p, 0.0)
         εpltr = εpl .+ Δγ * n
@@ -75,7 +78,7 @@ end
 		push!(exprs, :((f(σ+αs[:,$j])[1]-fσ)./h))
 	end
 	return quote
-		h = 10.0^-6
+		h = 10.0^-9
 		αs = SMatrix{3,3,Float64,9}(LinearAlgebra.I)*h
 		fσ = f(σ)[1]
 		σs = $(Expr(:tuple, exprs...))
@@ -84,13 +87,9 @@ end
 end
 
 function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w)
-	E = 1e6
-	ν = 0.25
-	ℂ = MaterialStiffness(Val{2}, E, ν)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
 	ℂnum = grad(x->response(x, εpl), εtr)
-	σtr,εpltr = response(εtr, εpl)
 	dVw = detJ*w
 	return 𝐁tr*ℂnum*𝐁*dVw
 end

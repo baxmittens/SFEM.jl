@@ -7,7 +7,7 @@ using LinearAlgebra
 using Printf
 #using MUMPS, MPI
 import ..MeshReader: GmshMesh
-import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
+import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!, σ_avg
 import ..IntegrationRules: gaussSimplex
 import Pardiso
 
@@ -20,11 +20,11 @@ abstract type PardisoSolver <: LinearSolver; end
 abstract type UMPFPackSolver <: LinearSolver; end
 abstract type MUMPSSolver <: LinearSolver; end
 
-mutable struct Domain
+mutable struct Domain{T<:GenericElement}
 	mma::Malloc
 	mesh::GmshMesh
 	refel::GenericRefElement
-	els::Vector{Tri3}
+	els::Vector{T}
 	nnodes::Int
 	ndofs::Int
 	nels::Int
@@ -38,7 +38,7 @@ mutable struct Domain
 	MMat::SparseMatrixCSC{Float64, Int64}
 	postdata::PostData
 	SOLVER::DataType
-	function Domain(mesh, els::Vector{Tri3}, RefEl::Type{T}, nips, ts) where {T<:GenericRefElement}
+	function Domain(mesh, els::Vector{T}, RefEl::Type{T}, nips, ts) where {T<:GenericRefElement}
 		refel = RefEl()
 		nels = length(els)
 		nnodes = size(mesh.nodes,1)
@@ -56,7 +56,7 @@ mutable struct Domain
 		else
 			SOLVER = UMPFPackSolver
 		end
-		return new(mma, mesh, refel, els, nnodes, ndofs, nels, ndofs_el, dofmap, cmap, ucmap, shapeFuns, ts, 0, MMat, PostData(ndofs, nnodes, length(ts)), SOLVER)
+		return new{T}(mma, mesh, refel, els, nnodes, ndofs, nels, ndofs_el, dofmap, cmap, ucmap, shapeFuns, ts, 0, MMat, PostData(ndofs, nnodes, length(ts), nels), SOLVER)
 	end
 end
 
@@ -120,8 +120,8 @@ end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
-	Pardiso.set_nprocs!(ps, parse(Int,ENV["MKL_NUM_THREADS"]))
-	@time Pardiso.solve!(ps, x, A, rhs)
+	Pardiso.set_nprocs!(ps, Base.Threads.nthreads())
+	Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
 
@@ -170,6 +170,10 @@ function postSolve!(dom::Domain)
 	dom.postdata.postdata[dom.actt].U .= dom.mma.U
 	dom.postdata.postdata[dom.actt].σ .= dom.MMat \ dom.mma.σ
 	dom.postdata.postdata[dom.actt].εpl .= dom.MMat \ dom.mma.εpl
+	@threads for i in 1:dom.nels
+		el = dom.els[i]
+		dom.postdata.postdata[dom.actt].σ_avg[i] = σ_avg(el, dom.actt)
+	end
 	return nothing
 end
 

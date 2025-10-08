@@ -34,10 +34,11 @@ mutable struct PostDataTS
 	U::Vector{Float64}
 	σ::Matrix{Float64}
 	εpl::Matrix{Float64}
-	PostDataTS(ndofs::Int, nnodes::Int) = new(zeros(Float64, ndofs), zeros(Float64, nnodes, 3), zeros(Float64, nnodes, 3))
+	σ_avg::Vector{Float64}
+	PostDataTS(ndofs::Int, nnodes::Int,nels::Int) = new(zeros(Float64, ndofs), zeros(Float64, nnodes, 3), zeros(Float64, nnodes, 3), zeros(Float64, nels))
 end
 
 mutable struct PostData
 	postdata::Vector{PostDataTS}
-	PostData(ndofs, nnodes, nts) = new(PostDataTS[PostDataTS(ndofs, nnodes) for _ in 1:nts])
+	PostData(ndofs, nnodes, nts, nels) = new(PostDataTS[PostDataTS(ndofs, nnodes, nels) for _ in 1:nts])
 end

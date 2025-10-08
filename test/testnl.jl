@@ -1,12 +1,13 @@
-ENV["OMP_NUM_THREADS"] = 20
-ENV["MKL_NUM_THREADS"] = 20
-ENV["OPENBLAS_NUM_THREADS"] = 20
+ENV["OMP_NUM_THREADS"] = Base.Threads.nthreads()
+ENV["MKL_NUM_THREADS"] = Base.Threads.nthreads()
+ENV["OPENBLAS_NUM_THREADS"] = Base.Threads.nthreads()
 
 using StaticArrays
 using SFEM
 using SFEM.Elements: Tri3Ref, Tri6Ref, Tri3, Tri6
 using SFEM.MeshReader: GmshMesh
 using SFEM.Domains: Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
+using LinearAlgebra
 
 #using ProfileView
 
@@ -38,7 +39,7 @@ end
 Label(controlview[1,1], text=timeslidertext)
 fieldview = controlview[2,2] = GridLayout()
 itemmenu = Menu(fieldview[1,1], options=["U", "σ", "εpl"])
-fieldmenu = Menu(fieldview[1,2], options=["xx", "yy", "xy"])
+fieldmenu = Menu(fieldview[1,2], options=["xx", "yy", "xy", "eq"])
 Label(fieldview[1,3], text="show mesh:")
 togglemesh = Toggle(fieldview[1,4], active = true)
 
@@ -98,16 +99,20 @@ postData = map!(Observable{Any}(), itemmenu.selection, fieldmenu.selection, time
 			dom.postdata.postdata[ti].σ[:,1].+eps()
 		elseif field == "yy"
 			dom.postdata.postdata[ti].σ[:,2].+eps()
-		else
+		elseif field == "xy"
 			dom.postdata.postdata[ti].σ[:,3].+eps()
+		else
+			norm.(vcat(dom.postdata.postdata[ti].σ[:,1], dom.postdata.postdata[ti].σ[:,3], dom.postdata.postdata[ti].σ[:,2], dom.postdata.postdata[ti].σ[:,3])).+eps()
 		end
 	else
 		if field == "xx"
 			abs.(dom.postdata.postdata[ti].εpl[:,1]).+eps()
 		elseif field == "yy"
 			abs.(dom.postdata.postdata[ti].εpl[:,2]).+eps()
-		else
+		elseif field == "xy"
 			abs.(dom.postdata.postdata[ti].εpl[:,3]).+eps()
+		else
+			norm.(vcat(dom.postdata.postdata[ti].εpl[:,1], dom.postdata.postdata[ti].εpl[:,3]./2.0, dom.postdata.postdata[ti].εpl[:,2], dom.postdata.postdata[ti].εpl[:,3]./2.0)).+eps()
 		end
 	end
 	
@@ -124,7 +129,8 @@ end
 
 
 
-tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)')
+tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=40)
+
 faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
 mesh = map!(Observable{Any}(), points) do p
 	GeometryBasics.Mesh(p, faces)
@@ -133,3 +139,23 @@ wireframe!(ax, mesh, color = (:black, 0.75), linewidth = 0.5, transparency = tru
 Colorbar(mainview[1,2], limits=postData_limits)
 display(f)
 end
+
+function facecolor(vertices,faces,facecolors)
+	v = zeros(size(faces,1)*3,2)
+	f = zeros(Int, size(faces))
+	fc = zeros(size(v,1))
+	for i in 1:size(faces,1)
+		face = faces[i,:]
+		verts = vertices[face,:]
+		j = 3*(i-1)+1
+		f[i,:] = [j,j+1,j+2]
+		v[j:j+2,:] .= verts
+		fc[j:j+2] .= facecolors[i]
+	end
+	return v,f,fc
+end
+vertices = dom.mesh.nodes[:,1:2]
+faces = hcat(conn...)'
+facecolors = dom.postdata.postdata[end].σ_avg
+v,f,fc = facecolor(vertices,faces,facecolors)
+cm_repo_2d = mesh!(ax, v, f, color=fc, shading=NoShading)

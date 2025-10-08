@@ -69,6 +69,7 @@ mutable struct ElementStateVars2D{NIPs}
 		return new{nips}(ntuple(i->IPStateVars2D(nts), nips))
 	end
 end
+σ_avg(state::ElementStateVars2D{NIPs}, actt::Int) where {NIPs} = sum(ntuple(ip->state.state[ip].σ[actt][1], NIPs))/NIPs
 
 struct Tri3{NIPs} <: TriElement
 	nodes::SMatrix{2,3,Float64,6}
@@ -86,6 +87,7 @@ dim(el::C) where {C<:GenericElement} = size(el.nodes,1)
 nnodes(el::C) where {C<:GenericElement} = size(el.nodes,2)
 nips(state::ElementStateVars2D{NIPs}) where {NIPs} = Val{NIPs}()
 nips(el::C) where {C<:GenericElement} = nips(el.state)
+σ_avg(el::C, actt::Int) where {C<:GenericElement} = σ_avg(el.state, actt)
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}
 	foreach(ipstate->saveHistory!(ipstate,actt), el.state.state)
