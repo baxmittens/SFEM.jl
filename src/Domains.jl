@@ -119,13 +119,13 @@ end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
-	Pardiso.set_nprocs!(ps, 10)
+	Pardiso.set_nprocs!(ps, Base.Threads.nthreads())
 	Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
 
 function solve!(::Type{UMPFPackSolver}, x, A, rhs::AbstractVector{Float64})
-	x .= A \ rhs
+	copy!(x, A \ rhs)
 	return nothing
 end
 
@@ -143,7 +143,12 @@ function solve!(dom::Domain)
 	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
 	@info "Solve"
 	t2 = time()
-	@time solve!(dom.SOLVER, ΔU[ucmap], Kglob[ucmap, ucmap], ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap]))
+
+	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
+	Klgobuc = Kglob[ucmap, ucmap]
+	x = @view ΔU[ucmap]
+	@time solve!(dom.SOLVER, x, Klgobuc, rhs)
+
 	t3 = time()
 	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
 	@info "Solver time: $percsolver%"
