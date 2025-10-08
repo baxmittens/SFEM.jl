@@ -119,7 +119,7 @@ end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
-	Pardiso.set_nprocs!(ps, Base.Threads.nthreads())
+	Pardiso.set_nprocs!(ps, 20)
 	Pardiso.solve!(ps, x, A, rhs)
 	return nothing
 end
