@@ -146,7 +146,7 @@ function solve!(dom::Domain)
 
 	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
 	Klgobuc = Kglob[ucmap, ucmap]
-	x = similar(ΔU[ucmap])
+	x = zeros(Float64, length(ΔU[ucmap]))
 	@time solve!(dom.SOLVER, x, Klgobuc, rhs)
 	ΔU[ucmap] .= x
 
