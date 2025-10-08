@@ -5,7 +5,7 @@ using SparseArrays
 using StaticArrays
 using LinearAlgebra
 using Printf
-using MUMPS, MPI
+#using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, nips, Tri3, Tri6, elMass, elPost, updateTrialStates!
 import ..IntegrationRules: gaussSimplex
@@ -66,7 +66,8 @@ function setBC!(dom::Domain, Uval)
 	ΔU = dom.mma.ΔU
 	dofmap = dom.dofmap
 	inds_xc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(mesh.nodes))
-	inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9) && isapprox(x[2],0.5,atol=1e-9), eachrow(mesh.nodes))
+	#inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9) && isapprox(x[2],0.5,atol=1e-9), eachrow(mesh.nodes))
+	inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(mesh.nodes))
 	inds_xc_1 = findall(x->isapprox(x[1],10.0,atol=1e-9), eachrow(mesh.nodes))
 	uc_y_0 = dofmap[2,inds_yc_0]
 	uc_x_0 = dofmap[1,inds_xc_0]
@@ -81,7 +82,8 @@ function setBCandUCMaps!(dom::Domain, Uval)
 	ΔU = dom.mma.ΔU
 	dofmap = dom.dofmap
 	inds_xc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(mesh.nodes))
-	inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9) && isapprox(x[2],0.5,atol=1e-9), eachrow(mesh.nodes))
+	#inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9) && isapprox(x[2],0.5,atol=1e-9), eachrow(mesh.nodes))
+	inds_yc_0 = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(mesh.nodes))
 	inds_xc_1 = findall(x->isapprox(x[1],10.0,atol=1e-9), eachrow(mesh.nodes))
 	uc_y_0 = dofmap[2,inds_yc_0]
 	uc_x_0 = dofmap[1,inds_xc_0]
@@ -94,27 +96,27 @@ function setBCandUCMaps!(dom::Domain, Uval)
 end
 
 
-function solve!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
-
-    if !MPI.Initialized()
-        MPI.Init()
-    end
-    comm = MPI.COMM_WORLD
- 
-    rhs_work = copy(rhs)
-
-    icntl = default_icntl[:]
-    #icntl[1:4] .= 0
-    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
-    
-    MUMPS.associate_matrix!(m, A; unsafe = false)
-    MUMPS.factorize!(m)
-    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
-    MUMPS.mumps_solve!(x, m)
-    MUMPS.finalize!(m)
-    MPI.Barrier(comm)
-    return x
-end
+#function solve!(::Type{MUMPSSolver}, x, A, rhs::AbstractVector{Float64})
+#
+#    if !MPI.Initialized()
+#        MPI.Init()
+#    end
+#    comm = MPI.COMM_WORLD
+# 
+#    rhs_work = copy(rhs)
+#
+#    icntl = default_icntl[:]
+#    #icntl[1:4] .= 0
+#    m = MUMPS.Mumps{Float64}(mumps_unsymmetric, icntl, default_cntl32);
+#    
+#    MUMPS.associate_matrix!(m, A; unsafe = false)
+#    MUMPS.factorize!(m)
+#    MUMPS.associate_rhs!(m, copy(rhs); unsafe = false)
+#    MUMPS.mumps_solve!(x, m)
+#    MUMPS.finalize!(m)
+#    MPI.Barrier(comm)
+#    return x
+#end
 
 function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
