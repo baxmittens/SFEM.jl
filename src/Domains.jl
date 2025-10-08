@@ -142,7 +142,7 @@ function solve!(dom::Domain)
 	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs, ndofs_el)
 	@info "Solve"
 	t2 = time()
-	@time solve!(ΔU[ucmap], Kglob[ucmap, ucmap], ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap]))
+	@time solve!(dom.SOLVER, ΔU[ucmap], Kglob[ucmap, ucmap], ( F[ucmap] - Kglob[ucmap, cmap] * ΔU[cmap]))
 	t3 = time()
 	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
 	@info "Solver time: $percsolver%"
