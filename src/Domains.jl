@@ -155,7 +155,7 @@ function solve!(dom::Domain)
 	ΔU[ucmap] .= x
 	t4 = time()
 	println("Solving the linear system took $(round(t4-t3,digits=2)) seconds")
-	percsolver =  @sprintf("%.2f", (t4-t1)/(t4-t3)*100)
+	percsolver =  @sprintf("%.2f", (t4-t3)/(t4-t1)*100)
 	@info "Solver time: $percsolver%"
 	U .+= ΔU
 	return nothing

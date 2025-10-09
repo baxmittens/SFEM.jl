@@ -2,6 +2,7 @@ ENV["OMP_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["MKL_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["OPENBLAS_NUM_THREADS"] = Base.Threads.nthreads()
 
+t1 = time()
 using StaticArrays
 using SFEM
 using SFEM.Elements: Tri3, Tri6, Tri
@@ -19,7 +20,7 @@ ts = collect(0.0:-0.005:-0.05)
 nts = length(ts)
 els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), Val{nips}, Val{nts}) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,nips,ts)
-t1 = time()
+
 tsolve!(dom)
 t2 = time()
 println("Gesamtzeit = $(round(t2-t1,digits=2))")
