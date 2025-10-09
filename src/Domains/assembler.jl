@@ -14,7 +14,8 @@ using SparseArrays
     end
 end
 
-function assemble!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
+function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
+    I, J, V, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
     nels = length(els)
     @threads for i in 1:nels
     #for i in 1:nels
@@ -40,7 +41,8 @@ function assemble!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, F::Vector
         @inbounds F[eldofs] .-= Rint
     end
 
-    return SparseArrays.sparse!(I, J, V, ndofs, ndofs)
+    return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr)
+    #return SparseArrays.sparse!(I, J, V, ndofs, ndofs)
 end
 
 function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}

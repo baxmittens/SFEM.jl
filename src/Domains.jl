@@ -13,8 +13,8 @@ import ..IntegrationRules: gaussSimplex
 import Pardiso
 
 
-include("./Domains/assembler.jl")
 include("./Domains/malloc.jl")
+include("./Domains/assembler.jl")
 
 abstract type LinearSolver; end
 abstract type PardisoSolver <: LinearSolver; end
@@ -145,7 +145,7 @@ function solve!(dom::Domain)
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
 	end
 	@info "Assemble global matrices"
-	@time Kglob = assemble!(I, J, V, F, dofmap, els, elMats, ndofs)
+	@time Kglob = assemble!(dom.mma, F, dofmap, els, elMats, ndofs)
 	@info "Solve"
 	t2 = time()
 
