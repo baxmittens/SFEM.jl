@@ -40,7 +40,7 @@ function assemble!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, F::Vector
         @inbounds F[eldofs] .-= Rint
     end
 
-    return sparse(I, J, V, ndofs, ndofs)
+    return sparse(I, J, V, ndofs, ndofs; combine=false)
 end
 
 function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}

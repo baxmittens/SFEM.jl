@@ -1,5 +1,6 @@
 // Rechteck-Geometrie mit Netzverfeinerung
-
+Mesh.MshFileVersion = 2.2;
+Mesh.SaveAll = 0;
 // Parameter für die Netzdichte (kleiner = feiner)
 lc = 0.01;
 
@@ -16,9 +17,6 @@ Line(3) = {3, 4};
 Line(4) = {4, 1};
 
 // Linien-Schleife und Fläche
-Line Loop(1) = {1, 2, 3, 4};
+Curve Loop(1) = {1, 2, 3, 4};
 Plane Surface(1) = {1};
-
-// Physikalische Gruppen (optional, nützlich für FE-Software)
-Physical Line("Boundary") = {1,2,3,4};
-Physical Surface("Domain") = {1};
+Physical Surface("domain") = {1};
