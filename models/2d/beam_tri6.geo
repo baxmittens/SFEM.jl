@@ -1,6 +1,6 @@
 // Rechteck-Geometrie mit Netzverfeinerung
-Mesh.MshFileVersion = 2.2;
-Mesh.SaveAll = 0;
+//Mesh.MshFileVersion = 2.2;
+//Mesh.SaveAll = 0;
 // Parameter für die Netzdichte (kleiner = feiner)
 lc = 0.01;
 
