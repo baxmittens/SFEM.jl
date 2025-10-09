@@ -15,22 +15,36 @@ using SparseArrays
 end
 
 function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
-    I, J, V, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
+    I, J, V, It, Jt, Vt, thrranges, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.It, mma.Jt, mma.Vt, mma.thrranges, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
     nels = length(els)
-    @threads for i in 1:nels
+    nt = length(It)
+    @threads for tid in 1:nt
+    #@threads for i in 1:nels
     #for i in 1:nels
-        @inbounds el = els[i]
-        @inbounds Ke  = elMats[i][1]
-        eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)
-        k = (i-1)*NN + 1        
-        @simd for a in 1:N
-            @inbounds for b in 1:N
-                I[k] = eldofs[a]
-                J[k] = eldofs[b]
-                V[k] = Ke[a, b]
-                k += 1
+        II = It[tid]
+        JJ = Jt[tid]
+        VV = Vt[tid]
+        #println("$tid, $(thrranges[tid]) $(thrranges[tid].-thrranges[tid].start.+1) $(length(thrranges[tid])) $(length(II))") 
+        k = 1
+        for i in div(thrranges[tid].start-1, NN)+1:div(thrranges[tid].stop, NN)
+            @inbounds el = els[i]
+            @inbounds Ke = elMats[i][1] 
+            eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)            
+            for a in 1:N
+                for b in 1:N
+                    II[k] = eldofs[a]
+                    JJ[k] = eldofs[b]
+                    VV[k] = Ke[a, b]
+                    k += 1
+                end
             end
         end
+    end
+
+    for (i,thrrange) in enumerate(thrranges)
+        I[thrrange] .= It[i]
+        J[thrrange] .= Jt[i]
+        V[thrrange] .= Vt[i]
     end
 
     fill!(F,0.0)
