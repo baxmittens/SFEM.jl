@@ -144,17 +144,17 @@ function solve!(dom::Domain)
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
 	end
 	t2 = time()
-	println("Integrating element matrices took $(round(t2-t1,digits=2)) seconds")
+	println("Integrating element matrices took $(round(t2-t1,digits=8)) seconds")
 	Kglob = assemble!(dom.mma, F, dofmap, els, elMats, ndofs)
 	t3 = time()
-	println("Assembling blfs and lfs took $(round(t3-t2,digits=2)) seconds")
+	println("Assembling blfs and lfs took $(round(t3-t2,digits=8)) seconds")
 	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
 	Klgobuc = Kglob[ucmap, ucmap]
 	x = zeros(Float64, length(ΔU[ucmap]))
 	solve!(dom.SOLVER, x, Klgobuc, rhs)
 	ΔU[ucmap] .= x
 	t4 = time()
-	println("Solving the linear system took $(round(t4-t3,digits=2)) seconds")
+	println("Solving the linear system took $(round(t4-t3,digits=8)) seconds")
 	percsolver =  @sprintf("%.2f", (t4-t3)/(t4-t1)*100)
 	@info "Solver time: $percsolver%"
 	U .+= ΔU
