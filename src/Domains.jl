@@ -144,7 +144,7 @@ function solve!(dom::Domain)
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
 	end
 	t2 = time()
-	println("Integrating element matrices took $(round(t2-t1,digits=2)) seconds"
+	println("Integrating element matrices took $(round(t2-t1,digits=2)) seconds")
 	Kglob = assemble!(dom.mma, F, dofmap, els, elMats, ndofs)
 	t3 = time()
 	println("Assembling blfs and lfs took $(round(t3-t2,digits=2)) seconds")
