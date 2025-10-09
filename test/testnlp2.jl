@@ -18,7 +18,7 @@ using LinearAlgebra
 meshfilepath = "../models/2d/beam_tri6.msh"
 mesh = GmshMesh(meshfilepath)
 nips = 7
-ts = collect(0.0:-0.05:-0.05)
+ts = collect(0.0:-0.005:-0.05)
 nts = length(ts)
 els = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), Val{nips}, Val{nts}) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,nips,ts)
