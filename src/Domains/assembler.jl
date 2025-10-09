@@ -14,7 +14,7 @@ using SparseArrays
     end
 end
 
-function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
+function _assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
     I, J, V, It, Jt, Vt, thrranges, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.It, mma.Jt, mma.Vt, mma.thrranges, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
     nels = length(els)
     nt = length(It)
@@ -24,14 +24,13 @@ function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Ve
         II = It[tid]
         JJ = Jt[tid]
         VV = Vt[tid]
-        #println("$tid, $(thrranges[tid]) $(thrranges[tid].-thrranges[tid].start.+1) $(length(thrranges[tid])) $(length(II))") 
         k = 1
         for i in div(thrranges[tid].start-1, NN)+1:div(thrranges[tid].stop, NN)
             @inbounds el = els[i]
             @inbounds Ke = elMats[i][1] 
             eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)            
-            for a in 1:N
-                for b in 1:N
+            @simd for a in 1:N
+                @inbounds for b in 1:N
                     II[k] = eldofs[a]
                     JJ[k] = eldofs[b]
                     VV[k] = Ke[a, b]
@@ -41,22 +40,47 @@ function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Ve
         end
     end
 
-    for (i,thrrange) in enumerate(thrranges)
+    @inbounds for (i,thrrange) in enumerate(thrranges)
         I[thrrange] .= It[i]
         J[thrrange] .= Jt[i]
         V[thrrange] .= Vt[i]
     end
 
     fill!(F,0.0)
-    for i in 1:nels
+    @inbounds @simd for i in 1:nels
         el = els[i]
         Rint  = elMats[i][2]
         eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)
-        @inbounds F[eldofs] .-= Rint
+        F[eldofs] .-= Rint
     end
 
     return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr)
     #return SparseArrays.sparse!(I, J, V, ndofs, ndofs)
+end
+
+function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
+    I, J, V, It, Jt, Vt, thrranges, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.It, mma.Jt, mma.Vt, mma.thrranges, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
+    Iptr,Vptr = mma.Iptr,mma.Vptr
+    nels = length(els)
+    nt = length(It)    
+    fill!(F,0.0)
+    for i in 1:nels        
+        @inbounds el = els[i]
+        @inbounds Ke = elMats[i][1] 
+        @inbounds Rint = elMats[i][2]
+        eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)            
+        k = (i-1)*NN + 1
+        @simd for a in 1:N
+            @inbounds for b in 1:N
+                I[k] = eldofs[a]
+                J[k] = eldofs[b]
+                V[k] = Ke[a, b]
+                k += 1
+            end
+        end
+        @inbounds F[eldofs] .-= Rint
+    end
+    return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr, Iptr, Vptr)
 end
 
 function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}
