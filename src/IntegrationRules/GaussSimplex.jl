@@ -35,6 +35,18 @@ function gaussSimplex(dim::Int, nip::Int)
 			s = SVector{6,Float64}(a, a, 1.0-2.0*a, b, b, 1.0-2.0*b)
 			w = SVector{6,Float64}(w1, w1, w1, w2, w2, w2)
 			return ((r,s), w)
+		elseif nip==7
+			a = 0.059715871789770
+            b = 0.470142064105115
+            c = 0.797426985353087
+            d = 0.101286507323456
+            w1 = 0.225000000000000
+            w2 = 0.132394152788506
+            w3 = 0.125939180544827
+            r = SVector{7,Float64}(1/3,  a, b, b, c, d, d)
+            s = SVector{7,Float64}(1/3,  b, a, b, d, c, d)
+            w = SVector{7,Float64}(w1,  w2, w2, w2, w3, w3, w3) .* 0.5
+            return ((r,s), w)
 		else
 			error("gaussSimplex: dim $dim, nip $nip combination not supported")
 		end

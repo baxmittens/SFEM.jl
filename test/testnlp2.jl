@@ -14,18 +14,22 @@ using LinearAlgebra
 #meshfilepath = "../models/2d/beam.msh"
 meshfilepath = "../models/2d/beam_tri6.msh"
 mesh = GmshMesh(meshfilepath)
-nips = 6
-ts = collect(0.0:-0.05:-0.20)
+nips = 7
+ts = collect(0.0:-0.05:-0.05)
 nts = length(ts)
 els = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), Val{nips}, Val{nts}) for elinds in mesh.connectivity]
 dom = Domain(mesh,els,nips,ts)
 #dom.SOLVER = SFEM.Domains.UMPFPackSolver
+t1 = time()
 tsolve!(dom)
+t2 = time()
+println("Gesamtzeit = $(round(t2-t1,digits=2))")
 #plotting = true
 #if plotting
 #	include("../src/Plotting.jl")
 #end
-
+plotting=false
+if plotting
 using GLMakie
 using GeometryBasics
 using LinearAlgebra
@@ -155,22 +159,23 @@ faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j =
 Colorbar(mainview[1,2], limits=postData_limits)
 f
 
-function facecolor(vertices,faces,facecolors)
-	v = zeros(size(faces,1)*3,2)
-	f = zeros(Int, size(faces))
-	fc = zeros(size(v,1))
-	for i in 1:size(faces,1)
-		face = faces[i,:]
-		verts = vertices[face,:]
-		j = 3*(i-1)+1
-		f[i,:] = [j,j+1,j+2]
-		v[j:j+2,:] .= verts
-		fc[j:j+2] .= facecolors[i]
-	end
-	return v,f,fc
+#function facecolor(vertices,faces,facecolors)
+#	v = zeros(size(faces,1)*3,2)
+#	f = zeros(Int, size(faces))
+#	fc = zeros(size(v,1))
+#	for i in 1:size(faces,1)
+#		face = faces[i,:]
+#		verts = vertices[face,:]
+#		j = 3*(i-1)+1
+#		f[i,:] = [j,j+1,j+2]
+#		v[j:j+2,:] .= verts
+#		fc[j:j+2] .= facecolors[i]
+#	end
+#	return v,f,fc
+#end
+#vertices = dom.mesh.nodes[:,1:2]
+#faces = hcat(_conn...)'[:,1:3]
+#facecolors = dom.postdata.postdata[end].σ_avg
+#v,fa,fc = facecolor(vertices,faces,facecolors)
+#cm_repo_2d = mesh!(ax, v, fa, color=fc, shading=NoShading)
 end
-vertices = dom.mesh.nodes[:,1:2]
-faces = hcat(_conn...)'[:,1:3]
-facecolors = dom.postdata.postdata[end].σ_avg
-v,fa,fc = facecolor(vertices,faces,facecolors)
-cm_repo_2d = mesh!(ax, v, fa, color=fc, shading=NoShading)

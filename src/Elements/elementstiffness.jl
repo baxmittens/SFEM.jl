@@ -6,15 +6,6 @@ function smallDet(M::SMatrix{3,3,Float64,9})
 	@inbounds return (M[1,1]*(M[2,2]*M[3,3]-M[2,3]*M[3,2]) - M[1,2]*(M[2,1]*M[3,3]-M[2,3]*M[3,1]) + M[1,3]*(M[2,1]*M[3,2]-M[2,2]*M[3,1]))
 end
 
-#function Blin0(::Type{Tri3{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
-#	return SMatrix{3,6,Float64,18}(
-#		gradN[1,1],0.0,gradN[1,2],
-#		0.0,gradN[1,2],gradN[1,1],
-#		gradN[2,1],0.0,gradN[2,2],
-#		0.0,gradN[2,2],gradN[2,1],
-#		gradN[3,1],0.0,gradN[3,2],
-#		0.0,gradN[3,2],gradN[3,1])
-#end
 function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
     return @SMatrix [
         gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
@@ -213,7 +204,6 @@ end
         return σe,εple
 	end
 end
-
 
 function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
