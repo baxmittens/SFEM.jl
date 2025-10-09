@@ -55,6 +55,7 @@ function _assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::V
     end
 
     return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr)
+    #return SparseMatrixCSR(I, J, V, ndofs, ndofs)
     #return SparseArrays.sparse!(I, J, V, ndofs, ndofs)
 end
 
@@ -80,7 +81,8 @@ function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Ve
         end
         @inbounds F[eldofs] .-= Rint
     end
-    return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr, Iptr, Vptr)
+    @time spm = SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr, Iptr, Vptr)
+    return spm
 end
 
 function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}
