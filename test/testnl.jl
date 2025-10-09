@@ -2,9 +2,6 @@ ENV["OMP_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["MKL_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["OPENBLAS_NUM_THREADS"] = Base.Threads.nthreads()
 
-using Logging
-global_logger(ConsoleLogger(stdout))
-
 using StaticArrays
 using SFEM
 using SFEM.Elements: Tri3, Tri6, Tri

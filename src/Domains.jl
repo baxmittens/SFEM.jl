@@ -137,26 +137,25 @@ end
 function solve!(dom::Domain)
 	I,J,V,U,ΔU,F,els,ndofs,elMats = dom.mma.I,dom.mma.J,dom.mma.V,dom.mma.U,dom.mma.ΔU,dom.mma.F,dom.els,dom.ndofs,dom.mma.elMats
 	dofmap,ucmap,cmap,shapeFuns,ndofs_el,actt = dom.dofmap, dom.ucmap, dom.cmap, dom.shapeFuns,dom.ndofs_el, dom.actt
-	@info "Integrate element matrices"
 	#@time elMats = Tuple{SMatrix{6, 6, Float64, 36}, SVector{6, Float64}}[elStiffness(el, dofmap, U, ΔU, shapeFuns, actt) for el in els];
 	t1 = time()
-	@time @threads for i in eachindex(els)
+	@threads for i in eachindex(els)
     	el = els[i]
     	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
 	end
-	@info "Assemble global matrices"
-	@time Kglob = assemble!(dom.mma, F, dofmap, els, elMats, ndofs)
-	@info "Solve"
 	t2 = time()
-
+	println("Integrating element matrices took $(round(t2-t1,digits=2)) seconds"
+	Kglob = assemble!(dom.mma, F, dofmap, els, elMats, ndofs)
+	t3 = time()
+	println("Assembling blfs and lfs took $(round(t3-t2,digits=2)) seconds")
 	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
 	Klgobuc = Kglob[ucmap, ucmap]
 	x = zeros(Float64, length(ΔU[ucmap]))
-	@time solve!(dom.SOLVER, x, Klgobuc, rhs)
+	solve!(dom.SOLVER, x, Klgobuc, rhs)
 	ΔU[ucmap] .= x
-
-	t3 = time()
-	percsolver = strnormdU = @sprintf("%.2f", (t3-t2)/(t3-t1)*100)
+	t4 = time()
+	println("Solving the linear system took $(round(t4-t3,digits=2)) seconds")
+	percsolver =  @sprintf("%.2f", (t4-t1)/(t4-t3)*100)
 	@info "Solver time: $percsolver%"
 	U .+= ΔU
 	return nothing
