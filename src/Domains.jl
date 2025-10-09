@@ -124,7 +124,8 @@ function solve!(::Type{PardisoSolver}, x, A, rhs::AbstractVector{Float64})
 	ps = Pardiso.MKLPardisoSolver()
 	Pardiso.set_nprocs!(ps, Base.Threads.nthreads())
 	Pardiso.set_matrixtype!(ps, 11)
-	Pardiso.solve!(ps, x, A, rhs)
+	#Pardiso.solve!(ps, x, A, rhs)
+	Pardiso.pardiso(ps, x, A, rhs)
 	return nothing
 end
 
