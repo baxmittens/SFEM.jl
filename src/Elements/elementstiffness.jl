@@ -171,24 +171,25 @@ end
 	end
 end
 
-function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, shapeFuns) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elMass(Val{NIPs}, Val{NNODES}, 𝐍s, detJs, wips)
 end
 
-function elPost(𝐍, vals, detJ, w)
+function elPost(𝐍, vals, detJ, w::Float64)
+	#println(typeof(𝐍), " ", typeof(vals)," ", typeof(detJ)," ", typeof(w))
 	dVw = detJ*w
 	return 𝐍*transpose(vals)*dVw
 end
 
 @generated function elPost(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
+	#println(typeof(wips)," ",wips)
 	NNODES3 = NNODES*3
 	body = Expr(:block)
 	for ip in 1:NIPs
@@ -205,12 +206,11 @@ end
 	end
 end
 
-function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"

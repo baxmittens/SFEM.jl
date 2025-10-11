@@ -2,6 +2,7 @@ module Elements
 
 using StaticArrays
 import LinearAlgebra
+import ...SFEM: LinearElasticity
 
 abstract type GenericRefElement
 end
@@ -67,7 +68,7 @@ mutable struct ElementStateVars2D{NIPs}
 		return new{NIPs}(ntuple(i->IPStateVars2D(Val{NTs}), NIPs))
 	end
 end
-σ_avg(state::ElementStateVars2D{NIPs}, actt::Int) where {NIPs} = sum(ntuple(ip->state.state[ip].σ[actt][1], NIPs))/NIPs
+σ_avg(state::ElementStateVars2D{NIPs}, actt::Int) where {NIPs} = ntuple(i->sum(ntuple(ip->state.state[ip].σ[actt][i], NIPs))/NIPs, 3)
 
 struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
@@ -88,12 +89,12 @@ nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIM
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
 
-function Tri3(nodes,inds,::Type{Val{NIPs}},::Type{Val{NTs}}) where {NIPs,NTs} 
-	return Tri{2,3,NIPs,6}(nodes, inds, ElementStateVars2D(Val{NIPs},Val{NTs}))
+function Tri3(nodes,inds, state::ElementStateVars2D, ::Type{Val{NIPs}}) where {NIPs} 
+	return Tri{2,3,NIPs,6}(nodes, inds, state)
 end
 
-function Tri6(nodes,inds,::Type{Val{NIPs}},::Type{Val{NTs}}) where {NIPs,NTs}
-	return Tri{2,6,NIPs,12}(nodes, inds, ElementStateVars2D(Val{NIPs},Val{NTs}))
+function Tri6(nodes,inds,state::ElementStateVars2D, ::Type{Val{NIPs}}) where {NIPs}
+	return Tri{2,6,NIPs,12}(nodes, inds, state)
 end
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}
@@ -103,14 +104,14 @@ end
 
 include("./Elements/elementstiffness.jl")
 
-function updateTrialStates!(state::IPStateVars2D, 𝐁, nodalU, actt)
+function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁, nodalU, actt)
 	εtr = 𝐁*nodalU
 	εpl = state.εpl[actt]
 	state.σtr,state.εpltr = response(εtr, εpl)
 	return nothing
 end
 
-function updateTrialStates!(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
@@ -122,7 +123,7 @@ function updateTrialStates!(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, 
 	invJs = ntuple(ip->inv(Js[ip]), NIPs)
 	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
 	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
-	foreach((ipstate,𝐁)->updateTrialStates!(ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
 	return nothing
 end
 

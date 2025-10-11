@@ -14,57 +14,11 @@ using SparseArrays
     end
 end
 
-function _assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
-    I, J, V, It, Jt, Vt, thrranges, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.It, mma.Jt, mma.Vt, mma.thrranges, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
+function assemble!(mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, offset) where {N,NN,T<:Tri}
+    I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els)
-    nt = length(It)
-    @threads for tid in 1:nt
-    #@threads for i in 1:nels
-    #for i in 1:nels
-        II = It[tid]
-        JJ = Jt[tid]
-        VV = Vt[tid]
-        k = 1
-        for i in div(thrranges[tid].start-1, NN)+1:div(thrranges[tid].stop, NN)
-            @inbounds el = els[i]
-            @inbounds Ke = elMats[i][1] 
-            eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)            
-            @simd for a in 1:N
-                @inbounds for b in 1:N
-                    II[k] = eldofs[a]
-                    JJ[k] = eldofs[b]
-                    VV[k] = Ke[a, b]
-                    k += 1
-                end
-            end
-        end
-    end
-
-    @inbounds for (i,thrrange) in enumerate(thrranges)
-        I[thrrange] .= It[i]
-        J[thrrange] .= Jt[i]
-        V[thrrange] .= Vt[i]
-    end
-
     fill!(F,0.0)
-    @inbounds @simd for i in 1:nels
-        el = els[i]
-        Rint  = elMats[i][2]
-        eldofs = _dofmap(Val{2}, Val{N}, dofmap, el.inds)
-        F[eldofs] .-= Rint
-    end
-
-    return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr)
-    #return SparseMatrixCSR(I, J, V, ndofs, ndofs)
-    #return SparseArrays.sparse!(I, J, V, ndofs, ndofs)
-end
-
-function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ndofs) where {N,NN,T<:Tri}
-    I, J, V, It, Jt, Vt, thrranges, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr = mma.I, mma.J, mma.V, mma.It, mma.Jt, mma.Vt, mma.thrranges, mma.klasttouch, mma.csrrowptr, mma.csrcolval, mma.csrnzval, mma.csccolptr
-    Iptr,Vptr = mma.Iptr,mma.Vptr
-    nels = length(els)
-    nt = length(It)    
-    fill!(F,0.0)
+    k = 0
     for i in 1:nels        
         @inbounds el = els[i]
         @inbounds Ke = elMats[i][1] 
@@ -73,18 +27,27 @@ function assemble!(mma::Malloc, F::Vector{Float64}, dofmap::Matrix{Int}, els::Ve
         k = (i-1)*NN + 1
         @simd for a in 1:N
             @inbounds for b in 1:N
-                I[k] = eldofs[a]
-                J[k] = eldofs[b]
-                V[k] = Ke[a, b]
+                I[k+offset] = eldofs[a]
+                J[k+offset] = eldofs[b]
+                V[k+offset] = Ke[a, b]
                 k += 1
             end
         end
         @inbounds F[eldofs] .-= Rint
     end
-    return SparseArrays.sparse!(I, J, V, ndofs, ndofs, +, klasttouch, csrrowptr, csrcolval, csrnzval, csccolptr, Iptr, Vptr)
+    return k+offset-1
 end
 
-function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}
+function assemble!(dom::Domain{N}) where {N}
+    offset = 0
+    for pdom in dom.processes
+        offset = assemble!(dom.mma, pdom.dofmap, pdom.els, pdom.mma.elMats, offset)
+    end
+    SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, 
+        dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr)
+end
+
+function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, els::Vector{T}, elMats::Vector{SMatrix{N, N, Float64, NN}}, ndofs) where {N,NN,T<:Tri}
     #k = 1
     nels = length(els)
     @threads for i in 1:nels
@@ -103,7 +66,7 @@ function assembleMass!(I::Vector{Int}, J::Vector{Int}, V::Vector{Float64}, dofma
     return sparse(I, J, V, ndofs, ndofs)
 end
 
-function assemblePost!(σ::Matrix{Float64}, εpl::Matrix{Float64}, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, M, Float64, NM}, SMatrix{N, M, Float64, NM}}}, ndofs) where {N,M,NM,T<:Tri}
+function assemblePost!(σ::Matrix{Float64}, εpl::Matrix{Float64}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, M, Float64, NM}, SMatrix{N, M, Float64, NM}}}, ndofs) where {N,M,NM,T<:Tri}
     k = 1
     nels = length(els)
     fill!(σ,0.0)
