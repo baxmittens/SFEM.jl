@@ -38,7 +38,7 @@ println("Gesamtzeit = $(round(t2-t1,digits=2))")
 #if plotting
 #	include("../src/Plotting.jl")
 #end
-plotting=true
+plotting=false
 if plotting
 using GLMakie
 using GeometryBasics
@@ -129,11 +129,11 @@ postData = map!(Observable{Any}(), itemmenu.selection, fieldmenu.selection, time
 		end
 	else
 		if field == "xx"
-			pdom.postdata.timesteps[ti].pdat[:εpl][:,1]
+			abs.(pdom.postdata.timesteps[ti].pdat[:εpl][:,1])
 		elseif field == "yy"
-			pdom.postdata.timesteps[ti].pdat[:εpl][:,2]
+			abs.(pdom.postdata.timesteps[ti].pdat[:εpl][:,2])
 		elseif field == "xy"
-			pdom.postdata.timesteps[ti].pdat[:εpl][:,3]
+			abs.(pdom.postdata.timesteps[ti].pdat[:εpl][:,3])
 		else
 			zeros(pdom.postdata.timesteps[ti].pdat[:U][:,1])
 		end
@@ -152,7 +152,7 @@ end
 
 
 
-tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=12)
+tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=40)
 
 faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
 #mesh = map!(Observable{Any}(), points) do p

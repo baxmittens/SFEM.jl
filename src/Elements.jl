@@ -75,16 +75,9 @@ struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, N
 	inds::SVector{NNODES,Int}
 	state::ElementStateVars2D{NIPs}
 end
-#struct Tri6{NIPs} <: TriElement
-#	nodes::SMatrix{2,6,Float64,12}
-#	inds::SVector{6,Int}
-#	state::ElementStateVars2D{NIPs}
-#	Tri6(nodes,inds,nips,nts) = new{nips}(nodes, inds, ElementStateVars2D(nips,nts))
-#end
+
 dim(el::Tri) = 2
 nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes} = NNODES
-#nips(state::ElementStateVars2D{NIPs}) where {NIPs} = Val{NIPs}()
-#nips(el::Tri{NNODES, NIPs, DIMtimesNNodes})  where {NNODES, NIPs, DIMtimesNNodes} = Val{NIPs}
 σ_avg(el::C, actt::Int) where {C<:GenericElement} = σ_avg(el.state, actt)
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
@@ -124,6 +117,18 @@ function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs,
 	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
 	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
 	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	return nothing
+end
+
+function initStates!(::Type{LinearElasticity}, state::IPStateVars2D)
+	fill!(state.εpl,zeros(SVector{3,Float64}))
+	fill!(state.σ,zeros(SVector{3,Float64}))
+	state.σtr,state.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
+	return nothing
+end
+
+function initStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	foreach(ipstate->initStates!(LinearElasticity, ipstate), el.state.state)
 	return nothing
 end
 

@@ -8,7 +8,7 @@ using Printf
 #using MUMPS, MPI
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, saveHistory!, 
-	Tri, Tri3, Tri6, elMass, elPost, updateTrialStates!, σ_avg, RefEl, flatten_tuple
+	Tri, Tri3, Tri6, elMass, elPost, updateTrialStates!, initStates!, σ_avg, RefEl, flatten_tuple
 import ..IntegrationRules: gaussSimplex
 import Pardiso
 import ...SFEM: Process, LinearElasticity, HeatConduction
@@ -20,7 +20,7 @@ abstract type PardisoSolver <: LinearSolver; end
 abstract type UMPFPackSolver <: LinearSolver; end
 abstract type MUMPSSolver <: LinearSolver; end
 
-mutable struct ProcessDomain{P,T}
+mutable struct ProcessDomain{P,T,ESF}
 	mma::ProcessDomainMalloc
 	nodes::Matrix{Float64}
 	connectivity::Vector{Vector{Int64}}
@@ -30,7 +30,7 @@ mutable struct ProcessDomain{P,T}
 	nels::Int
 	ndofs_el::Int
 	dofmap::Matrix{Int}
-	shapeFuns::EvaluatedShapeFunctions
+	shapeFuns::ESF
 	MMat::SparseMatrixCSC{Float64, Int64}
 	postdata::PostData
 	function ProcessDomain(process::Type{P}, nodes, connectivity, els::Vector{T}, dofmap, nips, nts) where {P<:Process,T}
@@ -40,14 +40,15 @@ mutable struct ProcessDomain{P,T}
 		ndofs_el = length(els[1].inds)*dim(els[1])
 		mma = ProcessDomainMalloc(nels, ndofs_el, Val{length(els[1].inds)}, nnodes) 
 		shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
+		ESF = typeof(shapeFuns)
 		elMMats = [elMass(el, shapeFuns) for el in els];
 		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, els, elMMats, nnodes)
-		return new{P,T}(mma, nodes, connectivity, refel, els, nnodes, nels, ndofs_el, dofmap, shapeFuns, MMat, PostData(P, nnodes, nts, nels))
+		return new{P,T,ESF}(mma, nodes, connectivity, refel, els, nnodes, nels, ndofs_el, dofmap, shapeFuns, MMat, PostData(P, nnodes, nts, nels))
 	end
 end
 
-mutable struct Domain{N}
-	processes::NTuple{N, ProcessDomain}
+mutable struct Domain{T}
+	processes::T
 	mma::DomainMalloc
 	ndofs::Int
 	nels::Int
@@ -57,7 +58,7 @@ mutable struct Domain{N}
 	timesteps::Vector{Float64}
 	actt::Int
 	SOLVER::DataType
-	function Domain(processes::NTuple{N, ProcessDomain},loadsteps::AbstractVector{Float64}, timesteps::AbstractVector{Float64}) where {N}
+	function Domain(processes::T,loadsteps::AbstractVector{Float64}, timesteps::AbstractVector{Float64}) where {T}
 		
 		@assert length(loadsteps) == length(timesteps)
 		@assert all(map(x->length(x.els), processes) .== length(processes[1].els))
@@ -74,7 +75,7 @@ mutable struct Domain{N}
 		else
 			SOLVER = UMPFPackSolver
 		end
-		return new{N}(processes, mma, ndofs, nels, cmap, ucmap, loadsteps, timesteps, 0, SOLVER)
+		return new{T}(processes, mma, ndofs, nels, cmap, ucmap, loadsteps, timesteps, 0, SOLVER)
 	end
 end
 
@@ -151,15 +152,21 @@ function solve!(::Type{UMPFPackSolver}, x, A, rhs::AbstractVector{Float64})
 	return nothing
 end
 
-function integrate!(::Type{Val{1}}, pdoms::Tuple{ProcessDomain{P,T}}, U, ΔU, actt) where {P,T}
-	pdom = pdoms[1]
+function integrate!(::Type{LinearElasticity}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, ΔU, actt) where {T, ENNODES, ENNODESSQ}
+	@threads for i in eachindex(els)
+    	el = els[i]
+    	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
+	end
+	return nothing
+end
+
+function integrate!(pdom::ProcessDomain{P,T}, U, ΔU, actt) where {P,T}
 	els = pdom.els
 	elMats = pdom.mma.elMats
-	@threads for i in eachindex(pdom.els)
-    	el = els[i]
-    	elMats[i] = elStiffness(el, pdom.dofmap, U, ΔU, pdom.shapeFuns, actt)
-	end
+	integrate!(P, els, elMats, pdom.dofmap, pdom.shapeFuns, U, ΔU, actt)
+	return nothing		
 end
+
 function integrate!(::Type{Val{N}}, pdoms::Tuple{ProcessDomain{P1,T1},ProcessDomain{P2,T2}}, U, ΔU, actt) where {N, P1,P2,T1,T2}
 	els1 = pdoms[N].els
 	els2 = pdoms[rem(N,2)+1].els
@@ -170,8 +177,9 @@ function integrate!(::Type{Val{N}}, pdoms::Tuple{ProcessDomain{P1,T1},ProcessDom
     	elMats[i] = elStiffness(el, pdom.dofmap, U, ΔU, pdom.shapeFuns, actt)
 	end
 end
-function integrate!(dom::Domain{N}) where {N}
-	ntuple(n->integrate!(Val{n}, dom.processes, dom.mma.U, dom.mma.ΔU, dom.actt), N)
+
+function integrate!(dom::Domain{Tuple{PD}}) where {PD}
+	integrate!(dom.processes[1], dom.mma.U, dom.mma.ΔU, dom.actt)
 	return nothing
 end
 
@@ -199,16 +207,31 @@ function solve!(dom::Domain)
 	return nothing
 end
 
-function updateTrialStates!(pdom::ProcessDomain{P,T}, U, actt) where {P,T}
+function updateTrialStates!(::Type{P}, els::Vector{T}, dofmap, U, shapeFuns::ESF, actt) where {P,T,ESF}
+	for el in els
+		updateTrialStates!(P, el, dofmap, U, shapeFuns, actt)
+	end
+	return nothing
+end
+function updateTrialStates!(pdom::ProcessDomain{P,T,ESF}, U, actt) where {P,T,ESF}
+	updateTrialStates!(P, pdom.els, pdom.dofmap, U, pdom.shapeFuns, actt)
+	return nothing
+end
+function updateTrialStates!(dom::Domain{Tuple{PD}}) where {PD}
+	updateTrialStates!(dom.processes[1], dom.mma.U, dom.actt)
+	return nothing
+end
+
+function initStates!(pdom::ProcessDomain{P,T}) where {P,T}
 	for el in pdom.els
-		updateTrialStates!(P, el, pdom.dofmap, U, pdom.shapeFuns, actt)
+		initStates!(P, el)
 	end
 	return nothing
 end
 
-function updateTrialStates!(dom::Domain{T}) where {T}
+function initStates!(dom::Domain{T}) where {T}
 	for pdom in dom.processes
-		updateTrialStates!(pdom, dom.mma.U, dom.actt)
+		initStates!(pdom)
 	end
 	return nothing
 end
@@ -265,6 +288,8 @@ end
 
 function tsolve!(dom::Domain)
 	dom.actt = 0
+	fill!(dom.mma.U, 0.0)
+	initStates!(dom)
 	setBCandUCMaps!(dom, 0.0)
 	for t in dom.loadsteps
 		@info "newtonraphson solve t=$t"

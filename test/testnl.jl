@@ -13,7 +13,7 @@ using LinearAlgebra
 #using ProfileView
 
 #meshfilepath = "../models/2d/beam.msh"
-meshfilepath = "../models/2d/beam.msh"
+meshfilepath = "../models/2d/beam_grob.msh"
 mesh = GmshMesh(meshfilepath)
 nips = 4
 ts = collect(0.0:-0.005:-0.05)

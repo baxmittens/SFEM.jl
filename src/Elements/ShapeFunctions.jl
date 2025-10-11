@@ -31,8 +31,7 @@ end
         $(Expr(:tuple, shape_exprs...))
     end
 end
-
-struct EvaluatedShapeFunctions{NIPs, NNodes, DIM, NNodestimesDIM}
+struct EvaluatedShapeFunctions{DIM, NNodes, NIPs, NNodestimesDIM}
     𝐍s::NTuple{NIPs, SVector{NNodes, Float64}}
     d𝐍s::NTuple{NIPs, SMatrix{NNodes, DIM, Float64, NNodestimesDIM}}
     wips::SVector{NIPs, Float64}
