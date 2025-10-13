@@ -5,21 +5,22 @@ struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
 	Vm::Vector{Float64}
 	σ::Matrix{Float64}
 	εpl::Matrix{Float64}
-	elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}
-	function ProcessDomainMalloc(nels,ndofs_el,::Type{Val{ennodes}}, nnodes) where {ennodes}
-		ndofsq = ndofs_el^2
+	q::Matrix{Float64}
+	elMMats::Vector{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}}
+	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes) where {ennodes}
 		nnz_total_mass = nels * ennodes^2
 		Im = Vector{Int}(undef, nnz_total_mass)
 		Jm = Vector{Int}(undef, nnz_total_mass)
 		Vm = Vector{Float64}(undef, nnz_total_mass)
 		σ = zeros(Float64, nnodes, 3)
 		εpl = zeros(Float64, nnodes, 3)
-		elMats = Vector{Tuple{SMatrix{2*ennodes,2*ennodes,Float64,4*ennodes*ennodes}, SVector{2*ennodes,Float64}}}(undef, nels)
-		return new{2*ennodes,4*ennodes*ennodes}(Im,Jm,Vm,σ,εpl,elMats)
+		q = zeros(Float64, nnodes, 2)
+		elMMats = Vector{SMatrix{ennodes,ennodes,Float64,ennodes*ennodes}}(undef, nels)
+		return new{ennodes,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats)
 	end
 end
 
-struct DomainMalloc
+struct DomainMalloc{ENNODES,ENNODESSQ}
 	U::Vector{Float64}
 	ΔU::Vector{Float64}
 	F::Vector{Float64}
@@ -33,6 +34,7 @@ struct DomainMalloc
 	csccolptr::Vector{Int}
 	Iptr::Vector{Int}
 	Vptr::Vector{Float64}
+	elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}
 	function DomainMalloc(nels,ndofs,ndofs_el)
 		U = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
@@ -49,20 +51,22 @@ struct DomainMalloc
 		csccolptr = Vector{Int}(undef, ndofs+1)
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
-		return new(U,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr)
+		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
 	end
 end
 
 mutable struct PostDataTS
 	pdat::Dict{Symbol, Matrix{Float64}}
 	PostDataTS(::Type{LinearElasticity}, nnodes, nels) = new(Dict{Symbol, Matrix{Float64}}(
-		:U=>zeros(Float64, nnodes, 2), 
+		:U=>zeros(Float64, nnodes, 2),  
 		:σ=>zeros(Float64, nnodes, 3), 
 		:εpl=>zeros(Float64, nnodes, 3), 
 		:σ_avg=>zeros(Float64, nels, 3)
 		))
 	PostDataTS(::Type{HeatConduction}, nnodes, nels) = new(Dict{Symbol, Matrix{Float64}}(
-		:temp=>zeros(Float64, nnodes, 1)
+		:ΔT=>zeros(Float64, nnodes, 1),
+		:q=>zeros(Float64, nnodes, 2)
 		))
 end
 

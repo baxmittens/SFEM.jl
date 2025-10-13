@@ -37,8 +37,8 @@ using LinearAlgebra, StaticArrays
 
 function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
     # Materialparameter
-    E  = 1e6
-    ν  = 0.25
+    E = 2.1e11
+    ν = 0.3
     σy = 200.0
     G  = E / (2*(1+ν))
 
@@ -65,7 +65,7 @@ function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
         εpltr = εpl
     else
         # plastisch
-        n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2) + eps())
+        n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2))
         #n = s / sqrt(2 * J2)
         Δγ = f / (3.0*G)  # ohne Verfestigung
         s_new = s - 2G * Δγ * n
@@ -83,7 +83,7 @@ end
 		push!(exprs, :((f(σ+αs[:,$j])[1]-fσ)./h))
 	end
 	return quote
-		h = 10.0^-9
+		h = 10.0^-8
 		αs = SMatrix{3,3,Float64,9}(LinearAlgebra.I)*h
 		fσ = f(σ)[1]
 		σs = $(Expr(:tuple, exprs...))
@@ -99,25 +99,18 @@ function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w)
 	return 𝐁tr*ℂnum*𝐁*dVw
 end
 
-function ipRint(state, 𝐁, nodalU, εpl, σ, detJ, w)
-	E = 1e6
-	ν = 0.25
-	𝐁tr = transpose(𝐁)
-	ℂ = MaterialStiffness(Val{2}, E, ν)
-	ε = 𝐁*nodalU
-	σ = ℂ * (ε-εpl)
-	#display(hcat(σ,state.σtr))
+function ipRint(state, 𝐁, detJ, w)
 	dVw = detJ*w
-	return 𝐁tr*state.σtr*dVw
+	return transpose(𝐁)*state.σtr*dVw
 end
 
-@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, σs, detJs, wips) where {NIPs,NNODES,DIM}
+@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, detJs, wips) where {NIPs,NNODES,DIM}
 	DIMTimesNNODES = DIM*NNODES
 	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], σs[$ip], detJs[$ip], wips[$ip])
+			Rel += ipRint(state[$ip], 𝐁s[$ip], detJs[$ip], wips[$ip])
             Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
@@ -143,12 +136,10 @@ function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, ΔU,
 	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
 	if actt == 1
 		εpls = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
-		σs = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
 	else
 		εpls = ntuple(ip->el.state.state[ip].εpl[actt-1], NIPs)
-		σs = ntuple(ip->el.state.state[ip].σtr, NIPs)
 	end
-	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, σs, detJs, wips)
+	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, detJs, wips)
 end
 
 function ipMass(𝐍, detJ, w)
@@ -183,7 +174,6 @@ function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns) where {DI
 end
 
 function elPost(𝐍, vals, detJ, w::Float64)
-	#println(typeof(𝐍), " ", typeof(vals)," ", typeof(detJ)," ", typeof(w))
 	dVw = detJ*w
 	return 𝐍*transpose(vals)*dVw
 end
@@ -215,4 +205,27 @@ function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) whe
 	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elPost(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
+end
+
+function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁, nodalU, actt)
+	εtr = 𝐁*nodalU
+	εpl = actt>1 ? state.εpl[actt-1] : zeros(SVector{3,Float64})
+	state.σtr,state.εpltr = response(εtr, εpl)
+	return nothing
+end
+
+function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	d𝐍s = shapeFuns.d𝐍s
+	wips = shapeFuns.wips
+	elX0 = el.nodes
+	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
+	nodalU = U[eldofs]
+	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
+	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	invJs = ntuple(ip->inv(Js[ip]), NIPs)
+	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
+	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
+	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	return nothing
 end

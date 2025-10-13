@@ -2,7 +2,7 @@ module Elements
 
 using StaticArrays
 import LinearAlgebra
-import ...SFEM: LinearElasticity
+import ...SFEM: LinearElasticity, HeatConduction
 
 abstract type GenericRefElement
 end
@@ -48,17 +48,22 @@ end
 mutable struct IPStateVars2D
 	σ::Vector{SVector{3,Float64}}
 	εpl::Vector{SVector{3,Float64}}
+	q::Vector{SVector{2,Float64}}
 	σtr::SVector{3,Float64}
 	εpltr::SVector{3,Float64}
+	qtr::SVector{2,Float64}
 	function IPStateVars2D(::Type{Val{NTs}}) where {NTs}
 		σ = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
 		εpl = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
-		return new(σ, εpl, SVector{3,Float64}(0.,0.,0.),SVector{3,Float64}(0.,0.,0.))
+		q = SVector{2,Float64}[SVector{2,Float64}(0.,0.) for i in 1:NTs]
+		return new(σ, εpl, q, SVector{3,Float64}(0.,0.,0.),SVector{3,Float64}(0.,0.,0.),SVector{2,Float64}(0.,0.))
 	end
 end
 function saveHistory!(ipstate::IPStateVars2D, actt)
 	ipstate.σ[actt] = ipstate.σtr
 	ipstate.εpl[actt] = ipstate.εpltr
+	ipstate.q[actt] = ipstate.qtr
+	ipstate.σtr,ipstate.εpltr,ipstate.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
 	return nothing
 end
 
@@ -96,38 +101,29 @@ function saveHistory!(el::C, actt) where {C<:GenericElement}
 end
 
 include("./Elements/elementstiffness.jl")
+include("./Elements/elementstiffnessT.jl")
+include("./Elements/elementstiffnessTM.jl")
 
-function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁, nodalU, actt)
-	εtr = 𝐁*nodalU
-	εpl = state.εpl[actt]
-	state.σtr,state.εpltr = response(εtr, εpl)
-	return nothing
-end
 
-function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
-	nodalU = U[eldofs]
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
-	@assert all(detJs .> 0) "error: det(J) < 0"
-	invJs = ntuple(ip->inv(Js[ip]), NIPs)
-	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
-	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
-	return nothing
-end
 
 function initStates!(::Type{LinearElasticity}, state::IPStateVars2D)
 	fill!(state.εpl,zeros(SVector{3,Float64}))
 	fill!(state.σ,zeros(SVector{3,Float64}))
-	state.σtr,state.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
+	fill!(state.q,zeros(SVector{2,Float64}))
+	state.σtr,state.εpltr,state.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
 	return nothing
 end
 
 function initStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	foreach(ipstate->initStates!(LinearElasticity, ipstate), el.state.state)
+	return nothing
+end
+
+function initStates!(::Type{HeatConduction}, state::IPStateVars2D)
+	return nothing
+end
+
+function initStates!(::Type{HeatConduction}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	foreach(ipstate->initStates!(LinearElasticity, ipstate), el.state.state)
 	return nothing
 end
