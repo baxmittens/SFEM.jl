@@ -16,7 +16,7 @@ using StaticArrays
 using LinearAlgebra
 #using ProfileView
 
-meshfilepath = "../models/2d/beam.msh"
+meshfilepath = "../models/2d/beam_grob.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 4
 ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]

@@ -73,9 +73,10 @@ function ipStiffnessTM(state, 𝐁, 𝐍_temp, grad𝐍_temp, nodalU, nodalT, ε
 	dVw = detJ*w
 	K_uu = 𝐁tr*ℂ1*𝐁*dVw
 	K_uT = 𝐁tr*ℂ2*transpose(𝐍_temp)*dVw
-	#K_TT = Δt*grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
+	K_TT = Δt*grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
 	K_TT = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
 	#M = ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw
+	#K = combine(K_uu,K_uT,M+K_TT)
 	K = combine(K_uu,K_uT,K_TT)
 
 	return K

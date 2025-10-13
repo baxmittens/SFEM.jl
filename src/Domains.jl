@@ -36,7 +36,7 @@ mutable struct ProcessDomain{P,T,ESF,DMD1}
 		refel = RefEl(T)
 		nels = length(els)
 		nnodes = size(nodes,1)
-		mma = ProcessDomainMalloc(nels, Val{length(els[1].inds)}, nnodes) 
+		mma = ProcessDomainMalloc(nels, Val{length(els[1].inds)}, nnodes, DOFMAPDIM1) 
 		shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
 		ESF = typeof(shapeFuns)
 		@threads for i in 1:nels
@@ -115,7 +115,7 @@ function setBC!(dom::Domain, eladom::ProcessDomain{HeatConduction,T}, ls::Vector
 	#uc_y_0 = dofmap[2,inds_yc_0]
 	uc_x_0 = dofmap[1,inds1]
 	uc_x_10 = dofmap[1,inds2]
-	ΔU[uc_x_0] .= (Uval .- U[uc_x_0])
+	ΔU[uc_x_0] .= (Uval/2.0 .- U[uc_x_0])
 	ΔU[uc_x_10] .= (Uval .- U[uc_x_10])
 	return vcat(uc_x_0, uc_x_10)
 	#return uc_y_1
@@ -220,7 +220,37 @@ function integrate!(dom::Domain{Tuple{PD}}) where {PD}
 	return nothing
 end
 
-function solve!(dom::Domain)
+function solve!(dom::Domain{Tuple{ProcessDomain{LinearElasticity, T1, E1, D1},ProcessDomain{HeatConduction, T2, E2, D2}}}) where {T1,E1,D1,T2,E2,D2}
+	ucmap,cmap = dom.ucmap, dom.cmap
+	t1 = time()
+	integrate!(dom)
+	t2 = time()
+	println("Integrating element matrices took $(round(t2-t1,digits=8)) seconds")
+	Kglob = assemble!(dom)
+	#display(Kglob)
+	#Kglob = SFEM.Domains.assemble!(dom)
+	t3 = time()
+	println("Assembling blfs and lfs took $(round(t3-t2,digits=8)) seconds")
+	F,ΔU,U = dom.mma.F,dom.mma.ΔU,dom.mma.U
+	#c_p = 450.0
+    #ϱ = 7000.0
+    #mul!(dom.processes[2].mma.Utmp, (c_p*ϱ)*dom.processes[2].MMat, dom.mma.Uprev[dom.processes[2].dofmap[1,:]])
+    #dom.mma.Utmp[dom.processes[2].dofmap[1,:]] .= dom.processes[2].mma.Utmp
+	#rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap] + dom.mma.Utmp[ucmap]
+	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
+	Klgobuc = Kglob[ucmap, ucmap]
+	x = zeros(Float64, length(ΔU[ucmap])) #???
+	solve!(dom.SOLVER, x, Klgobuc, rhs)
+	ΔU[ucmap] .= x
+	t4 = time()
+	println("Solving the linear system took $(round(t4-t3,digits=8)) seconds")
+	percsolver =  @sprintf("%.2f", (t4-t3)/(t4-t1)*100)
+	@info "Solver time: $percsolver%"
+	U .+= ΔU
+	return nothing
+end
+
+function solve!(dom::Domain{Tuple{ProcessDomain{LinearElasticity, T, E, D}}}) where {T,E,D}
 	ucmap,cmap = dom.ucmap, dom.cmap
 	t1 = time()
 	integrate!(dom)
@@ -356,6 +386,7 @@ end
 function tsolve!(dom::Domain)
 	dom.actt = 0
 	fill!(dom.mma.U, 0.0)
+	fill!(dom.mma.Uprev, 0.0)
 	initStates!(dom)
 	setBCandUCMaps!(dom)
 	for t in dom.timesteps
@@ -363,6 +394,7 @@ function tsolve!(dom::Domain)
 		dom.actt += 1
 		t1 = time()
 		newtonraphson!(dom)
+		dom.mma.Uprev .= dom.mma.U
 		@info "Save history variables"
 		@time saveHistory!(dom)
 		@info "Postprocessing"

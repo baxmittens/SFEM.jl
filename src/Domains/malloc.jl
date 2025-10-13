@@ -7,7 +7,8 @@ struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
 	εpl::Matrix{Float64}
 	q::Matrix{Float64}
 	elMMats::Vector{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}}
-	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes) where {ennodes}
+	Utmp::Vector{Float64}
+	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes, ndofs_node) where {ennodes}
 		nnz_total_mass = nels * ennodes^2
 		Im = Vector{Int}(undef, nnz_total_mass)
 		Jm = Vector{Int}(undef, nnz_total_mass)
@@ -16,12 +17,15 @@ struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
 		εpl = zeros(Float64, nnodes, 3)
 		q = zeros(Float64, nnodes, 2)
 		elMMats = Vector{SMatrix{ennodes,ennodes,Float64,ennodes*ennodes}}(undef, nels)
-		return new{ennodes,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats)
+		Utmp = zeros(Float64, nnodes*ndofs_node)
+		return new{ennodes,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats,Utmp)
 	end
 end
 
 struct DomainMalloc{ENNODES,ENNODESSQ}
 	U::Vector{Float64}
+	Uprev::Vector{Float64}
+	Utmp::Vector{Float64}
 	ΔU::Vector{Float64}
 	F::Vector{Float64}
 	I::Vector{Int}
@@ -37,6 +41,8 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}
 	function DomainMalloc(nels,ndofs,ndofs_el)
 		U = zeros(Float64, ndofs)
+		Uprev = zeros(Float64, ndofs)
+		Utmp = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
 		F = zeros(Float64, ndofs)
 		ndofsq = ndofs_el^2
@@ -52,7 +58,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
 		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
-		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,Uprev,Utmp,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
 	end
 end
 
