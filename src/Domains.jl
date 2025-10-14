@@ -366,6 +366,7 @@ function tsolve!(dom::Domain)
 		dom.actt += 1
 		t1 = time()
 		newtonraphson!(dom)
+		dom.mma.Uprev .= dom.mma.U
 		@info "Save history variables"
 		@time saveHistory!(dom)
 		@info "Postprocessing"

@@ -75,7 +75,7 @@ function ipStiffnessTM(state, 𝐁, 𝐍_temp, grad𝐍_temp, nodalU, nodalT, ε
 	K_uT = 𝐁tr*ℂ2*transpose(𝐍_temp)*dVw
 	#K_TT = Δt*grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
 	K_TT = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
-	M = ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw/10000.0
+	M = ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw/1000.0
 	K = combine(K_uu,K_uT,M+K_TT)
 
 	return K
@@ -85,8 +85,10 @@ function ipRintTM(state, 𝐁, grad𝐍_temp, 𝐍_temp, nodalT, nodalTm1, detJ,
 	dVw = detJ*w
 	c_p = 450.0
 	ϱ = 7000.0
-	MΔT = 1/10000.0*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*(nodalT-nodalTm1)*dVw
-	q = grad𝐍_temp*state.qtr*dVw+MΔT
+	𝐤 = SMatrix{2,2,Float64,4}(50.0,0.0,0.0,50.0)
+	MΔT = 1/1000.0*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*(nodalT-nodalTm1)*dVw
+	#q = grad𝐍_temp*state.qtr*dVw+MΔT
+	q = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*nodalT*dVw+MΔT
 	σ = transpose(𝐁)*state.σtr*dVw
 	return vcat(σ,q)
 end
