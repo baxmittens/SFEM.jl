@@ -30,7 +30,7 @@ mutable struct ProcessDomain{P,T,ESF,DMD1}
 	nels::Int
 	dofmap::Matrix{Int}
 	shapeFuns::ESF
-	MMat::SparseMatrixCSC{Float64, Int64}
+	MMat::SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}
 	postdata::PostData
 	function ProcessDomain(::Type{P}, nodes, connectivity, els::Vector{T}, dofmap, nips, nts, ::Type{Val{DOFMAPDIM1}}) where {P<:Process,T,DOFMAPDIM1}
 		refel = RefEl(T)
@@ -43,7 +43,7 @@ mutable struct ProcessDomain{P,T,ESF,DMD1}
 			el = els[i]
 			mma.elMMats[i] = elMass(el, shapeFuns)
 		end
-		MMat = assembleMass!(mma.Im, mma.Jm, mma.Vm, els, mma.elMMats, nnodes)
+		MMat = lu(assembleMass!(mma.Im, mma.Jm, mma.Vm, els, mma.elMMats, nnodes))
 		return new{P,T,ESF,DOFMAPDIM1}(mma, nodes, connectivity, refel, els, nnodes, nels, dofmap, shapeFuns, MMat, PostData(P, nnodes, nts, nels))
 	end
 end
@@ -199,27 +199,27 @@ function integrate!(dom::Domain{Tuple{ProcessDomain{LinearElasticity, T1, ESF1, 
 	return nothing
 end
 
-function integrate!(::Type{LinearElasticity}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, ΔU, actt) where {T, ENNODES, ENNODESSQ}
+function integrate!(::Type{LinearElasticity}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, Uprev, actt) where {T, ENNODES, ENNODESSQ}
 	@threads for i in eachindex(els)
     	el = els[i]
-    	elMats[i] = elStiffness(el, dofmap, U, ΔU, shapeFuns, actt)
+    	elMats[i] = elStiffness(el, dofmap, U, shapeFuns, actt)
 	end
 	return nothing
 end
-function integrate!(::Type{HeatConduction}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, ΔU, actt) where {T, ENNODES, ENNODESSQ}
+function integrate!(::Type{HeatConduction}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, Uprev, actt) where {T, ENNODES, ENNODESSQ}
 	@threads for i in eachindex(els)
     	el = els[i]
-    	elMats[i] = elStiffnessT(el, dofmap, U, ΔU, shapeFuns, actt)
+    	elMats[i] = elStiffnessT(el, dofmap, U, Uprev, shapeFuns, actt)
 	end
 	return nothing
 end
-function integrate!(elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, pdom::ProcessDomain{P,T}, U, ΔU, actt) where {ENNODES,ENNODESSQ,P,T}
+function integrate!(elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, pdom::ProcessDomain{P,T}, U, Uprev, actt) where {ENNODES,ENNODESSQ,P,T}
 	els = pdom.els
-	integrate!(P, els, elMats, pdom.dofmap, pdom.shapeFuns, U, ΔU, actt)
+	integrate!(P, els, elMats, pdom.dofmap, pdom.shapeFuns, U, Uprev, actt)
 	return nothing		
 end
 function integrate!(dom::Domain{Tuple{PD}}) where {PD}
-	integrate!(dom.mma.elMats, dom.processes[1], dom.mma.U, dom.mma.ΔU, dom.actt)
+	integrate!(dom.mma.elMats, dom.processes[1], dom.mma.U, dom.mma.Uprev, dom.actt)
 	return nothing
 end
 
@@ -230,16 +230,20 @@ function solve!(dom::Domain)
 	t2 = time()
 	println("Integrating element matrices took $(round(t2-t1,digits=8)) seconds")
 	Kglob = assemble!(dom)
-	#display(Kglob)
-	#Kglob = SFEM.Domains.assemble!(dom)
-	t3 = time()
-	println("Assembling blfs and lfs took $(round(t3-t2,digits=8)) seconds")
 	F,ΔU,U = dom.mma.F,dom.mma.ΔU,dom.mma.U
 	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
 	Klgobuc = Kglob[ucmap, ucmap]
-	x = zeros(Float64, length(ΔU[ucmap])) #???
-	solve!(dom.SOLVER, x, Klgobuc, rhs)
-	ΔU[ucmap] .= x
+	t3 = time()
+	println("Assembling blfs and lfs took $(round(t3-t2,digits=8)) seconds")
+	if isempty(dom.mma.luKglob)
+		luKglob = lu(Klgobuc)
+		push!(dom.mma.luKglob, luKglob)
+		ΔU[ucmap] .= luKglob \ rhs
+	else
+		luKglob = first(dom.mma.luKglob)
+		lu!(luKglob, Klgobuc)
+		ΔU[ucmap] .= luKglob \ rhs
+	end
 	t4 = time()
 	println("Solving the linear system took $(round(t4-t3,digits=8)) seconds")
 	percsolver =  @sprintf("%.2f", (t4-t3)/(t4-t1)*100)
@@ -248,35 +252,34 @@ function solve!(dom::Domain)
 	return nothing
 end
 
-function updateTrialStates!(::Type{P}, els::Vector{T}, dofmap, U, shapeFuns::ESF, actt) where {P,T,ESF}
-	for el in els
-		updateTrialStates!(P, el, dofmap, U, shapeFuns, actt)
-	end
-	return nothing
-end
-function updateTrialStates!(::Type{P1}, ::Type{P2}, els1::Vector{T1}, els2::Vector{T2}, dofmap1, dofmap2, U, shapeFuns1::ESF1, shapeFuns2::ESF2, actt) where {P1,T1,ESF1,P2,T2,ESF2}
-	for (el1,el2) in zip(els1,els2)
-		updateTrialStates!(P1, P2, el1, el2, dofmap1, dofmap2, U, shapeFuns1, shapeFuns2, actt)
+function updateTrialStates!(pdom::ProcessDomain{LinearElasticity, T, E, D}, dom::Domain) where {T,E,D}
+	@threads for el in pdom.els
+		updateTrialStates!(LinearElasticity, el, pdom.dofmap, dom.mma.U, pdom.shapeFuns, dom.actt)
 	end
 	return nothing
 end
 
-function updateTrialStates!(pdom::ProcessDomain{P,T,ESF}, U, actt) where {P,T,ESF}
-	updateTrialStates!(P, pdom.els, pdom.dofmap, U, pdom.shapeFuns, actt)
+function updateTrialStates!(pdom::ProcessDomain{HeatConduction, T, E, D}, dom::Domain) where {T,E,D}
+	@threads for el in pdom.els
+		updateTrialStates!(HeatConduction, el, pdom.dofmap, dom.mma.U, pdom.shapeFuns, dom.actt)
+	end
 	return nothing
 end
-function updateTrialStates!(dom::Domain{Tuple{PD}}) where {PD}
-	updateTrialStates!(dom.processes[1], dom.mma.U, dom.actt)
+function updateTrialStates!(pdom1::ProcessDomain{LinearElasticity, T1, E1, D1}, pdom2::ProcessDomain{HeatConduction, T2, E2, D2}, dom::Domain) where {T1,E1,D1,T2,E2,D2}
+	@threads for i in 1:pdom1.nels
+		el1 = pdom1.els[i]
+		el2 = pdom2.els[i]
+		updateTrialStates!(LinearElasticity, HeatConduction, el1, el2, pdom1.dofmap, pdom2.dofmap, dom.mma.U, pdom1.shapeFuns, pdom2.shapeFuns, dom.actt)
+	end
 	return nothing
 end
 
-function updateTrialStates!(pdom1::ProcessDomain{P1,T1,ESF1}, pdom2::ProcessDomain{P2,T2,ESF2}, U, actt) where {P1,T1,ESF1,P2,T2,ESF2}
-	updateTrialStates!(P1, P2, pdom1.els, pdom2.els, pdom1.dofmap, pdom2.dofmap, U, pdom1.shapeFuns, pdom2.shapeFuns, actt)
+function updateTrialStates!(dom::Domain{Tuple{PD1,PD2}}) where {PD1<:ProcessDomain,PD2<:ProcessDomain}
+	updateTrialStates!(dom.processes[1], dom.processes[2], dom)
 	return nothing
 end
-function updateTrialStates!(dom::Domain{Tuple{PD1,PD2}}) where {PD1,PD2}
-	pdom1,pdom2 = dom.processes
-	updateTrialStates!(pdom1, pdom2, dom.mma.U, dom.actt)
+function updateTrialStates!(dom::Domain{Tuple{PD}}) where {PD<:ProcessDomain}
+	updateTrialStates!(first(dom.processes), dom)
 	return nothing
 end
 
@@ -295,7 +298,7 @@ function initStates!(dom::Domain{T}) where {T}
 end
 
 function postSolve!(pdom::ProcessDomain{LinearElasticity, T}, U, actt) where {T}
-	@time elPosts = [elPost(el, pdom.shapeFuns, actt) for el in pdom.els];
+	elPosts = [elPost(el, pdom.shapeFuns, actt) for el in pdom.els];
 	assemblePost!(pdom.mma.σ, pdom.mma.εpl, pdom.els, elPosts, pdom.nnodes)
 	pdom.postdata.timesteps[actt].pdat[:U] .= transpose(U[pdom.dofmap])
 	pdom.postdata.timesteps[actt].pdat[:σ] .= pdom.MMat \ pdom.mma.σ
@@ -308,7 +311,7 @@ function postSolve!(pdom::ProcessDomain{LinearElasticity, T}, U, actt) where {T}
 	return nothing
 end
 function postSolve!(pdom::ProcessDomain{HeatConduction, T}, U, actt) where {T}
-	@time elPosts = [elPostT(el, pdom.shapeFuns, actt) for el in pdom.els];
+	elPosts = [elPostT(el, pdom.shapeFuns, actt) for el in pdom.els];
 	assemblePostT!(pdom.mma.q, pdom.els, elPosts, pdom.nnodes)
 	pdom.postdata.timesteps[actt].pdat[:ΔT] .= transpose(U[pdom.dofmap])
 	pdom.postdata.timesteps[actt].pdat[:q] .= pdom.MMat \ pdom.mma.q
@@ -326,7 +329,9 @@ function postSolve!(dom::Domain{Tuple{PD1,PD2}}) where {PD1,PD2}
 end
 
 function saveHistory!(dom::Domain)
+	updateTrialStates!(dom)
 	foreach(el->saveHistory!(el, dom.actt), dom.processes[1].els) 
+	return nothing
 end
 
 function init_loadstep!(dom::Domain)
@@ -342,10 +347,9 @@ function newtonraphson!(dom::Domain)
 	numit = 0
 	str = "\nconvergence history"
 	@info "Start Newton-Raphson iteration"
-	while normdU>1e-7 && numit < 10
+	while normdU>1e-9 && numit < 10
 		@info "Newton-Raphson iteration $(numit+1)"
 		solve!(dom)
-		updateTrialStates!(dom)
 		normdU = norm(dom.mma.ΔU)
 		fill!(dom.mma.ΔU,0.0)
 		strnormdU = @sprintf("%.4e", normdU) 
@@ -354,6 +358,7 @@ function newtonraphson!(dom::Domain)
 	end
 	println(str)
 	println()
+	return nothing
 end
 
 function tsolve!(dom::Domain)
@@ -376,6 +381,9 @@ function tsolve!(dom::Domain)
 		@info "Analysis time $timestr seconds"
 		println()
 	end
+	pop!(dom.mma.Kglob)
+	pop!(dom.mma.luKglob)
+	return nothing
 end
 
 end #module Domains

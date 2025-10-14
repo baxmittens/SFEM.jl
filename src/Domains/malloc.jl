@@ -36,6 +36,10 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	Iptr::Vector{Int}
 	Vptr::Vector{Float64}
 	elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}
+	#Kglob::Union{SparseMatrixCSC{Float64, Int64},Nothing}
+	Kglob::Vector{SparseMatrixCSC{Float64, Int64}}
+	idxmap::Vector{Int}
+	luKglob::Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}
 	function DomainMalloc(nels,ndofs,ndofs_el)
 		U = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
@@ -54,7 +58,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
 		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
-		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats,Vector{SparseMatrixCSC{Float64, Int64}}(),Vector{Int}(undef, nnz_total), Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}())
 	end
 end
 

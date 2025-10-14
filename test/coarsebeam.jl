@@ -14,12 +14,12 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using ProfileView
+#using ProfileView
 
 meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 4
-ts = collect(0.0:-0.5:-0.5)
+ts = collect(0.0:-0.1:-0.5)
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
@@ -38,7 +38,7 @@ println("Gesamtzeit = $(round(t2-t1,digits=2))")
 #if plotting
 #	include("../src/Plotting.jl")
 #end
-plotting=false
+plotting=true
 if plotting
 using GLMakie
 using GeometryBasics

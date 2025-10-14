@@ -1,30 +1,4 @@
 
-function smallDet(M::SMatrix{2,2,Float64,4})
-	@inbounds return (M[1,1]*M[2,2] - M[1,2]*M[2,1])
-end
-function smallDet(M::SMatrix{3,3,Float64,9})
-	@inbounds return (M[1,1]*(M[2,2]*M[3,3]-M[2,3]*M[3,2]) - M[1,2]*(M[2,1]*M[3,3]-M[2,3]*M[3,1]) + M[1,3]*(M[2,1]*M[3,2]-M[2,2]*M[3,1]))
-end
-
-function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]
-    ]
-end
-function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0 			gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0	
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]	0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
-    ]
-end
-
-function MaterialStiffness(::Type{Val{2}}, E, ν)
-	fac = E/((1+ν)*(1-2*ν))
-	return fac*SMatrix{3,3,Float64,9}(1-ν,ν,0.,ν,1-ν,0.,0.,0.,(1-2*ν)/2.0)
-end
 
 #function response(εtr, εpl)
 #	E = 1e6
@@ -35,7 +9,7 @@ end
 
 using LinearAlgebra, StaticArrays
 
-function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
+function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     # Materialparameter
     E = 2.1e11
     ν = 0.3
@@ -44,9 +18,10 @@ function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64})
 
     # 2D Elastizitätsmatrix (plane strain)
     ℂ = MaterialStiffness(Val{2}, E, ν)
+    αT = SVector{3,Float64}(1e-5,1e-5,0.0)
 
     # Trialspannung
-    σtr = ℂ * (εtr - εpl)
+    σtr = ℂ * (εtr - εpl - αT.*ΔT)
 
     # Deviatorische Spannung (2D)
     p = (σtr[1] + σtr[2]) / 3.0
@@ -91,17 +66,19 @@ end
 	end
 end
 
-function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w)
+function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
-	ℂnum = grad(x->response(x, εpl), εtr)
+	ℂnum = grad(x->response(x, εpl, ΔT), εtr)
 	dVw = detJ*w
 	return 𝐁tr*ℂnum*𝐁*dVw
 end
 
-function ipRint(state, 𝐁, detJ, w)
+function ipRint(state, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	dVw = detJ*w
-	return transpose(𝐁)*state.σtr*dVw
+	εtr = 𝐁*nodalU
+	σtr = response(εtr, εpl, ΔT)[1]
+	return transpose(𝐁)*σtr*dVw
 end
 
 @generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, detJs, wips) where {NIPs,NNODES,DIM}
@@ -110,7 +87,7 @@ end
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], detJs[$ip], wips[$ip])
+			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
             Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
@@ -122,7 +99,7 @@ end
 	end
 end
 
-function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, ΔU, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function elStiffnessVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
@@ -139,6 +116,11 @@ function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, ΔU,
 	else
 		εpls = ntuple(ip->el.state.state[ip].εpl[actt-1], NIPs)
 	end
+	return 𝐁s, nodalU, εpls, detJs, wips
+end
+
+function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	𝐁s, nodalU, εpls, detJs, wips = elStiffnessVals(el, dofmap, U, shapeFuns, actt)
 	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, detJs, wips)
 end
 
@@ -215,17 +197,7 @@ function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	eldofs = dofmap[SVector{2,Int}(1,2),el.inds][:]
-	nodalU = U[eldofs]
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
-	@assert all(detJs .> 0) "error: det(J) < 0"
-	invJs = ntuple(ip->inv(Js[ip]), NIPs)
-	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
+	𝐁s, nodalU, _, _, _ = elStiffnessVals(el, dofmap, U, shapeFuns, actt)
 	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
 	return nothing
 end

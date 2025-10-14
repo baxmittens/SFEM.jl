@@ -100,11 +100,10 @@ function saveHistory!(el::C, actt) where {C<:GenericElement}
 	return nothing
 end
 
+include("./Elements/matrices.jl")
 include("./Elements/elementstiffness.jl")
 include("./Elements/elementstiffnessT.jl")
 include("./Elements/elementstiffnessTM.jl")
-
-
 
 function initStates!(::Type{LinearElasticity}, state::IPStateVars2D)
 	fill!(state.εpl,zeros(SVector{3,Float64}))
