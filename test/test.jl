@@ -19,8 +19,9 @@ using LinearAlgebra
 meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 4
-ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]
-ts = collect(0.0:1.0:2.0)
+#ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]
+ls = [zeros(4),[0.0,-30.0,-30.0,-30.0]]
+ts = collect(0.0:1.0:3.0)
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els1 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];

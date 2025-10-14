@@ -23,6 +23,7 @@ end
 struct DomainMalloc{ENNODES,ENNODESSQ}
 	U::Vector{Float64}
 	ΔU::Vector{Float64}
+	Uprev::Vector{Float64}
 	F::Vector{Float64}
 	I::Vector{Int}
 	J::Vector{Int}
@@ -38,6 +39,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	function DomainMalloc(nels,ndofs,ndofs_el)
 		U = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
+		Uprev = zeros(Float64, ndofs)
 		F = zeros(Float64, ndofs)
 		ndofsq = ndofs_el^2
 		nnz_total = nels * ndofsq
@@ -52,7 +54,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
 		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
-		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
 	end
 end
 

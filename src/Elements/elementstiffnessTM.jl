@@ -6,7 +6,7 @@
 #	return ℂ*(εtr - αT.*ΔTtr), εpl
 #end
 
-function responseTM(εtr::SVector{3,Float64}, ΔTtr::Float64, εpl::SVector{3,Float64})
+function responseTM(εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔTtr::Float64)
     # Materialparameter
     E = 2.1e11
     ν = 0.3
@@ -67,34 +67,37 @@ function ipStiffnessTM(state, 𝐁, 𝐍_temp, grad𝐍_temp, nodalU, nodalT, ε
 	εtr = 𝐁*nodalU
 	ΔTtr = transpose(𝐍_temp)*nodalT
 
-	ℂ1  = grad(x->responseTM(x, ΔTtr, εpl), εtr)
-	ℂ2 = grad(x->responseTM(εtr, x, εpl), ΔTtr)
+	ℂ1  = grad(x->responseTM(x, εpl, ΔTtr), εtr)
+	ℂ2 = grad(x->responseTM(εtr, εpl, x), ΔTtr)
 
 	dVw = detJ*w
 	K_uu = 𝐁tr*ℂ1*𝐁*dVw
 	K_uT = 𝐁tr*ℂ2*transpose(𝐍_temp)*dVw
 	#K_TT = Δt*grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
 	K_TT = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
-	#M = ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw
-	K = combine(K_uu,K_uT,K_TT)
+	M = ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw/10000.0
+	K = combine(K_uu,K_uT,M+K_TT)
 
 	return K
 end
 	
-function ipRintTM(state, 𝐁, grad𝐍_temp, detJ, w, Δt)
+function ipRintTM(state, 𝐁, grad𝐍_temp, 𝐍_temp, nodalT, nodalTm1, detJ, w, Δt)
 	dVw = detJ*w
-	q = grad𝐍_temp*state.qtr*dVw
+	c_p = 450.0
+	ϱ = 7000.0
+	MΔT = 1/10000.0*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*(nodalT-nodalTm1)*dVw
+	q = grad𝐍_temp*state.qtr*dVw+MΔT
 	σ = transpose(𝐁)*state.σtr*dVw
 	return vcat(σ,q)
 end
 
-@generated function elStiffnessTM(::Type{Val{NIPs}}, ::Type{Val{NNODES1}}, ::Type{Val{NNODES2}}, ::Type{Val{DIM}}, state, 𝐁s, 𝐍s_temp, grad𝐍s_temp, nodalU, nodalT, εpls, detJs, wips, Δt) where {NIPs,NNODES1,NNODES2,DIM}
+@generated function elStiffnessTM(::Type{Val{NIPs}}, ::Type{Val{NNODES1}}, ::Type{Val{NNODES2}}, ::Type{Val{DIM}}, state, 𝐁s, 𝐍s_temp, grad𝐍s_temp, nodalU, nodalT, nodalTm1, εpls, detJs, wips, Δt) where {NIPs,NNODES1,NNODES2,DIM}
 	DIMTimesNNODES = (DIM*NNODES1+NNODES2)
 	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRintTM(state[$ip], 𝐁s[$ip], grad𝐍s_temp[$ip], detJs[$ip], wips[$ip], Δt)
+			Rel += ipRintTM(state[$ip], 𝐁s[$ip], grad𝐍s_temp[$ip], 𝐍s_temp[$ip], nodalT, nodalTm1, detJs[$ip], wips[$ip], Δt)
             Kel += ipStiffnessTM(state[$ip], 𝐁s[$ip], 𝐍s_temp[$ip], grad𝐍s_temp[$ip], nodalU, nodalT, εpls[$ip], detJs[$ip], wips[$ip], Δt)
 		end)
 	end
@@ -106,7 +109,7 @@ end
 	end
 end
 
-function elStiffnessTM(el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{DIM, NNODES2, NIPs, DIMtimesNNodes2}, dofmap1, dofmap2, U, ΔU, shapeFuns1, shapeFuns2, actt, Δt) where {DIM, NNODES1, NNODES2, NIPs, DIMtimesNNodes1, DIMtimesNNodes2}
+function elStiffnessTM(el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{DIM, NNODES2, NIPs, DIMtimesNNodes2}, dofmap1, dofmap2, U, Uprev, shapeFuns1, shapeFuns2, actt, Δt) where {DIM, NNODES1, NNODES2, NIPs, DIMtimesNNodes1, DIMtimesNNodes2}
 	d𝐍s1 = shapeFuns1.d𝐍s
 	d𝐍s2 = shapeFuns2.d𝐍s
 	𝐍s2 = shapeFuns2.𝐍s
@@ -116,6 +119,7 @@ function elStiffnessTM(el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{D
 	eldofs2 = dofmap2[1,el2.inds][:]
 	nodalU = U[eldofs1]
 	nodalT = U[eldofs2]
+	nodalTm1 = Uprev[eldofs2]
 	Js1 = ntuple(ip->elX0*d𝐍s1[ip], NIPs)
 	detJs1 = ntuple(ip->smallDet(Js1[ip]), NIPs)
 	@assert all(detJs1 .> 0) "error: det(JM) < 0"
@@ -128,14 +132,14 @@ function elStiffnessTM(el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{D
 	else
 		εpls = ntuple(ip->el1.state.state[ip].εpl[actt-1], NIPs)
 	end
-	return elStiffnessTM(Val{NIPs}, Val{NNODES1}, Val{NNODES2}, Val{DIM}, el1.state.state, 𝐁s, 𝐍s2, grad𝐍s2, nodalU, nodalT, εpls, detJs1, wips, Δt)
+	return elStiffnessTM(Val{NIPs}, Val{NNODES1}, Val{NNODES2}, Val{DIM}, el1.state.state, 𝐁s, 𝐍s2, grad𝐍s2, nodalU, nodalT, nodalTm1, εpls, detJs1, wips, Δt)
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, ::Type{HeatConduction}, state::IPStateVars2D, 𝐁, grad𝐍_temp, 𝐍_temp, nodalU, nodalT, actt)
 	εtr = 𝐁*nodalU
 	εpl = actt > 1 ? state.εpl[actt-1] : zeros(SVector{3,Float64})
 	ΔTtr = transpose(𝐍_temp)*nodalT
-	state.σtr,state.εpltr = responseTM(εtr, ΔTtr, εpl)
+	state.σtr,state.εpltr = responseTM(εtr, εpl, ΔTtr)
 	𝐤 = SMatrix{2,2,Float64,4}(50.0,0.0,0.0,50.0)
 	state.qtr = 𝐤*transpose(grad𝐍_temp)*nodalT
 	return nothing

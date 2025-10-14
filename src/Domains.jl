@@ -92,15 +92,18 @@ function setBC!(dom::Domain, eladom::ProcessDomain{LinearElasticity,T}, ls::Vect
 	
 	inds_left = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(nodes))
 	inds_right = findall(x->isapprox(x[1],10.0,atol=1e-9), eachrow(nodes))
+
+	inds_left_middle = findall(x->isapprox(x[1],0.0,atol=1e-9)&&isapprox(x[2],0.0,atol=1e-9), eachrow(nodes))
+	inds_right_middle = findall(x->isapprox(x[1],10.0,atol=1e-9)&&isapprox(x[2],0.0,atol=1e-9), eachrow(nodes))
 	
 	left_bc_x = dofmap[1,inds_left]
-	left_bc_y = dofmap[2,inds_left]
+	left_bc_y = dofmap[2,inds_left_middle]
 	right_bc_x = dofmap[1,inds_right]
-	right_bc_y = dofmap[2,inds_right]
+	right_bc_y = dofmap[2,inds_right_middle]
 	
 	ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
-	#return vcat(left_bc_x, left_bc_y, right_bc_x, right_bc_y)
-	return vcat(left_bc_x, left_bc_y, right_bc_y)
+	return vcat(left_bc_x, left_bc_y, right_bc_x, right_bc_y)
+	#return vcat(left_bc_x, left_bc_y, right_bc_y)
 	
 end
 
@@ -176,23 +179,23 @@ function solve!(::Type{UMPFPackSolver}, x, A, rhs::AbstractVector{Float64})
 	return nothing
 end
 
-function integrateTM!(elMats, els1, els2, dofmap1, dofmap2, shapeFuns1, shapeFuns2, U, ΔU, actt, Δt)
+function integrateTM!(elMats, els1, els2, dofmap1, dofmap2, shapeFuns1, shapeFuns2, U, Uprev, actt, Δt)
 	@threads for i in eachindex(els1)
 		el1 = els1[i]
 		el2 = els2[i]
-    	elMats[i] = elStiffnessTM(el1, el2, dofmap1, dofmap2, U, ΔU, shapeFuns1, shapeFuns2, actt, Δt)
+    	elMats[i] = elStiffnessTM(el1, el2, dofmap1, dofmap2, U, Uprev, shapeFuns1, shapeFuns2, actt, Δt)
 	end
 end
-function integrateTM!(elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, pdoms::Tuple{ProcessDomain{LinearElasticity,T1},ProcessDomain{HeatConduction,T2}}, U, ΔU, actt, Δt) where {N,NN,T1,T2}
+function integrateTM!(elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, pdoms::Tuple{ProcessDomain{LinearElasticity,T1},ProcessDomain{HeatConduction,T2}}, U, Uprev, actt, Δt) where {N,NN,T1,T2}
 	pdom1,pdom2 = pdoms
 	els1,els2 = pdom1.els,pdom2.els
-	integrateTM!(elMats, els1, els2, pdom1.dofmap, pdom2.dofmap, pdom1.shapeFuns, pdom2.shapeFuns, U, ΔU, actt, Δt)
+	integrateTM!(elMats, els1, els2, pdom1.dofmap, pdom2.dofmap, pdom1.shapeFuns, pdom2.shapeFuns, U, Uprev, actt, Δt)
 	return nothing		
 end
 
 function integrate!(dom::Domain{Tuple{ProcessDomain{LinearElasticity, T1, ESF1, D1}, ProcessDomain{HeatConduction, T2, ESF2, D2}}}) where {T1,T2,ESF1,ESF2,D1,D2}
 	Δt = dom.actt > 1 ? dom.timesteps[dom.actt]-dom.timesteps[dom.actt-1] : 0.0
-	integrateTM!(dom.mma.elMats, dom.processes, dom.mma.U, dom.mma.ΔU, dom.actt, Δt)
+	integrateTM!(dom.mma.elMats, dom.processes, dom.mma.U, dom.mma.Uprev, dom.actt, Δt)
 	return nothing
 end
 
