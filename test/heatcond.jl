@@ -16,10 +16,11 @@ using StaticArrays
 using LinearAlgebra
 using ProfileView
 
-meshfilepath = "../models/2d/beam_grob.msh"
+meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 7
-ls = collect(0.0:1.0:3.0)
+ls = vcat(0.0,ones(15)*-100)
+ts = collect(0.0:100.0:1500.0)
 nts = length(ls)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
@@ -29,7 +30,7 @@ dofmap = convert(Matrix{Int}, reshape(1:ndofs,1,:))
 
 
 heatconduction = ProcessDomain(HeatConduction, mesh.nodes, mesh.connectivity, els, dofmap, nips, nts, Val{1})
-dom = Domain((heatconduction,),[ls],ls)
+dom = Domain((heatconduction,),[ls],ts)
 tsolve!(dom)
 
 test = false
@@ -76,7 +77,7 @@ f = Figure(size=(1000,600));
 mainview = f[1,1] = GridLayout()
 controlview = f[2,1] = GridLayout()
 ax = Axis(f[1,1], autolimitaspect = 1)
-timeslider = Slider(controlview[1,2], range = ls, startvalue = first(ls), update_while_dragging=false)
+timeslider = Slider(controlview[1,2], range = 1:length(ls), startvalue = length(ls), update_while_dragging=false)
 timeslidertext = map!(Observable{Any}(), timeslider.value) do val
 	return "t=$val"
 end
@@ -107,8 +108,7 @@ X = pdom.nodes[:,1]
 Y = pdom.nodes[:,2]
 
 postData = map!(Observable{Any}(), itemmenu.selection, fieldmenu.selection, timeslider.value) do item,field,val
-	ti = findfirst(x->x==val, dom.timesteps)
-	return pdom.postdata.timesteps[ti].pdat[:ΔT][:,1]
+	return pdom.postdata.timesteps[val].pdat[:ΔT][:,1]
 end
 
 postData_limits = map!(Observable{Any}(), postData) do u

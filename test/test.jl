@@ -16,11 +16,11 @@ using StaticArrays
 using LinearAlgebra
 #using ProfileView
 
-meshfilepath = "../models/2d/beam_grob.msh"
+meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 4
-ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]
-ts = collect(0.0:1.0:2.0)
+ls = [zeros(Float64,12),vcat(0.0,ones(11)*-100)]
+ts = [0.0,1.0,5.0,10.0,20.0,30.0,50.0,100.0,500.0,1000.0,5000.0,10000.0]
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els1 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
@@ -198,7 +198,7 @@ end
 
 postData_limits = map!(Observable{Any}(), postData) do u
 	lims = minimum(u),maximum(u)
-	if abs(lims[2]-lims[1]) < 1e-6
+	if abs(lims[2]-lims[1]) < 1e-9
 		return lims[2]-0.00001,lims[2]+0.00001
 	else
 		return lims

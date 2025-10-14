@@ -52,18 +52,22 @@ mutable struct IPStateVars2D
 	σtr::SVector{3,Float64}
 	εpltr::SVector{3,Float64}
 	qtr::SVector{2,Float64}
+	MΔTtr::SVector{3,Float64}
 	function IPStateVars2D(::Type{Val{NTs}}) where {NTs}
 		σ = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
 		εpl = SVector{3,Float64}[SVector{3,Float64}(0.,0.,0.) for i in 1:NTs]
 		q = SVector{2,Float64}[SVector{2,Float64}(0.,0.) for i in 1:NTs]
-		return new(σ, εpl, q, SVector{3,Float64}(0.,0.,0.),SVector{3,Float64}(0.,0.,0.),SVector{2,Float64}(0.,0.))
+		return new(σ, εpl, q, SVector{3,Float64}(0.,0.,0.), SVector{3,Float64}(0.,0.,0.),SVector{2,Float64}(0.,0.), zeros(SVector{3,Float64}))
 	end
 end
 function saveHistory!(ipstate::IPStateVars2D, actt)
 	ipstate.σ[actt] = ipstate.σtr
 	ipstate.εpl[actt] = ipstate.εpltr
 	ipstate.q[actt] = ipstate.qtr
-	ipstate.σtr,ipstate.εpltr,ipstate.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
+	#ipstate.σtr,ipstate.εpltr,ipstate.qtr,ipstate.MΔTtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64}),zeros(SVector{3,Float64})
+	ipstate.σtr,ipstate.εpltr,ipstate.MΔTtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
+	#ipstate.σtr,ipstate.εpltr,ipstate.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
+	#ipstate.σtr,ipstate.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
 	return nothing
 end
 
@@ -104,22 +108,21 @@ include("./Elements/elementstiffness.jl")
 include("./Elements/elementstiffnessT.jl")
 include("./Elements/elementstiffnessTM.jl")
 
-
-
 function initStates!(::Type{LinearElasticity}, state::IPStateVars2D)
 	fill!(state.εpl,zeros(SVector{3,Float64}))
 	fill!(state.σ,zeros(SVector{3,Float64}))
+	state.σtr,state.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
+	return nothing
+end
+
+function initStates!(::Type{HeatConduction}, state::IPStateVars2D)
 	fill!(state.q,zeros(SVector{2,Float64}))
-	state.σtr,state.εpltr,state.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
+	state.qtr,state.MΔTtr = zeros(SVector{2,Float64}),zeros(SVector{3,Float64})
 	return nothing
 end
 
 function initStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	foreach(ipstate->initStates!(LinearElasticity, ipstate), el.state.state)
-	return nothing
-end
-
-function initStates!(::Type{HeatConduction}, state::IPStateVars2D)
 	return nothing
 end
 
