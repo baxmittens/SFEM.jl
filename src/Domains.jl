@@ -98,7 +98,7 @@ function setBC!(dom::Domain, eladom::ProcessDomain{LinearElasticity,T}, ls::Vect
 	right_bc_x = dofmap[1,inds_right]
 	right_bc_y = dofmap[2,inds_right]
 	
-	#ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
+	ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
 	return vcat(left_bc_x, left_bc_y, right_bc_x, right_bc_y)
 	#return vcat(left_bc_x, left_bc_y, right_bc_y)
 	

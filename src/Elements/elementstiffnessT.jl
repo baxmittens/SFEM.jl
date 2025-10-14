@@ -1,7 +1,8 @@
 
 function ipStiffnessT(state, grad𝐍_temp, 𝐍, nodalT, detJ, w, Δt)
 	𝐤 = SMatrix{2,2,Float64,4}(50.,0.,0.,50.)
-	c_p = 450.0
+	#c_p = 450.0
+	c_p = 0.0
     ϱ = 7000.0
 	dVw = detJ*w
 	M = ϱ*c_p*𝐍*transpose(𝐍)*dVw/Δt
@@ -80,7 +81,8 @@ end
 
 function updateTrialStates!(::Type{HeatConduction}, state::IPStateVars2D, grad𝐍_temp, 𝐍, nodalT, nodalTm1, actt)
 	𝐤 = SMatrix{2,2,Float64,4}(50.0,0.0,0.0,50.0)
-	c_p = 450.0
+	#c_p = 450.0
+	c_p = 0.0
     ϱ = 7000.0
 	state.qtr = 𝐤*transpose(grad𝐍_temp)*nodalT
 	state.MΔTtr = ϱ*c_p*𝐍*transpose(𝐍)*(nodalT-nodalTm1)

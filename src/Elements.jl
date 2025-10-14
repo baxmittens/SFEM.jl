@@ -65,8 +65,9 @@ function saveHistory!(ipstate::IPStateVars2D, actt)
 	ipstate.εpl[actt] = ipstate.εpltr
 	ipstate.q[actt] = ipstate.qtr
 	#ipstate.σtr,ipstate.εpltr,ipstate.qtr,ipstate.MΔTtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64}),zeros(SVector{3,Float64})
-	ipstate.σtr,ipstate.εpltr,ipstate.MΔTtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
-	#ipstate.σtr,ipstate.εpltr,ipstate.qtr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
+	ipstate.σtr,ipstate.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64})
+	#ipstate.MΔTtr = zeros(SVector{3,Float64})
+	ipstate.qtr = zeros(SVector{2,Float64})
 	#ipstate.σtr,ipstate.εpltr = zeros(SVector{3,Float64}),zeros(SVector{3,Float64}),zeros(SVector{2,Float64})
 	return nothing
 end

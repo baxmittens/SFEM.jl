@@ -19,7 +19,7 @@ using ProfileView
 meshfilepath = "../models/2d/beam.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 4
-ts = collect(0.0:-0.5:-0.5)
+ts = collect(0.0:-0.5:-1.0)
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
