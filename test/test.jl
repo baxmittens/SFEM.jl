@@ -22,9 +22,9 @@ meshtri6 = GmshMesh(meshfilepath);
 meshtri3 = GmshMesh(meshfilepath1);
 nips = 7
 #ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]
-ls = [vcat(zeros(6),collect(0.0:-0.0005:-0.008)),vcat(zeros(1),ones(Float64,22)*-100)]
-ts = collect(0.0:1.0:22.0)
-ls,ts = [[0.0,0.0,-0.2],[0.0,-250.0,-500.0]],[0.0,1.0,2.0]
+ls = [vcat(zeros(6),collect(0.0:-0.0005:-0.002)),vcat(zeros(1),ones(Float64,10)*-100)]
+ts = collect(0.0:1.0:10.0)
+#ls,ts = [[0.0,0.0,-0.2],[0.0,-250.0,-500.0]],[0.0,1.0,2.0]
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in meshtri6.connectivity];
 els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(meshtri6.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(meshtri6.connectivity, states)];
@@ -214,14 +214,14 @@ end
 
 
 
-tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=17)
+tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=80, colormap=:prism)
 
 faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
 #mesh = map!(Observable{Any}(), points) do p
 #	GeometryBasics.Mesh(p, faces)
 #end
 #wireframe!(ax, mesh, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
-Colorbar(mainview[1,2], limits=postData_limits)
+Colorbar(mainview[1,2], limits=postData_limits, colormap=:prism)
 f
 
 #function facecolor(vertices,faces,facecolors)

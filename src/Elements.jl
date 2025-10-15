@@ -2,7 +2,7 @@ module Elements
 
 using StaticArrays
 import LinearAlgebra
-import ...SFEM: LinearElasticity, HeatConduction
+import ...SFEM: LinearElasticity, HeatConduction, MaterialLaw, LinearElastic, J2Plasticity
 
 abstract type GenericRefElement
 end
@@ -40,9 +40,9 @@ dim(el::C) where {C<:GenericRefElement} = size(el.nodes,1)
 nnodes(el::C) where {C<:GenericRefElement} = size(el.nodes,2)
 
 
-abstract type GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
+abstract type GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
 end
-abstract type ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
+abstract type ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes, M} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
 end
 
 mutable struct IPStateVars2D
@@ -75,10 +75,25 @@ mutable struct ElementStateVars2D{NIPs}
 end
 σ_avg(state::ElementStateVars2D{NIPs}, actt::Int) where {NIPs} = ntuple(i->sum(ntuple(ip->state.state[ip].σ[actt][i], NIPs))/NIPs, 3)
 
-struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
+struct MatPars
+	ϱ::Float64
+	c_p::Float64
+	α_Tx::Float64
+	α_Ty::Float64
+	α_Tz::Float64
+	k_x::Float64
+	k_y::Float64
+	k_z::Float64
+	E::Float64
+	ν::Float64
+	σy::Float64
+end
+
+struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes, M} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
 	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
 	inds::SVector{NNODES,Int}
 	state::ElementStateVars2D{NIPs}
+	matpars::MatPars
 end
 
 dim(el::Tri) = 2
@@ -87,12 +102,12 @@ nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIM
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
 
-function Tri3(nodes,inds, state::ElementStateVars2D, ::Type{Val{NIPs}}) where {NIPs} 
-	return Tri{2,3,NIPs,6}(nodes, inds, state)
+function Tri3(s::Type{M}, nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs, M<:MaterialLaw} 
+	return Tri{2,3,NIPs,6,M}(nodes, inds, state, matpars)
 end
 
-function Tri6(nodes,inds,state::ElementStateVars2D, ::Type{Val{NIPs}}) where {NIPs}
-	return Tri{2,6,NIPs,12}(nodes, inds, state)
+function Tri6(::Type{M}, nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs, M<:MaterialLaw}
+	return Tri{2,6,NIPs,12,M}(nodes, inds, state, matpars)
 end
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}

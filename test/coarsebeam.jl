@@ -16,15 +16,17 @@ using StaticArrays
 using LinearAlgebra
 #using ProfileView
 
-meshfilepath = "../models/2d/beam_grob.msh"
-#meshfilepath = "../models/2d/beam_tri6.msh"
+#meshfilepath = "../models/2d/beam_grob.msh"
+meshfilepath = "../models/2d/beam_tri6.msh"
 mesh = GmshMesh(meshfilepath);
 nips = 7
-ts = collect(0.0:-0.1:-0.5)
+#ts = collect(0.0:-0.001:-1.0)
+ts = collect(0.0:-0.0005:-0.002)
+#ts = collect(0.0:1.0:10.0)
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
-els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
-#els = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
+#els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
+els = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
 ndofs = size(mesh.nodes,1)*2
 dofmap = convert(Matrix{Int}, reshape(1:ndofs,2,:))
 linela = ProcessDomain(LinearElasticity, mesh.nodes, mesh.connectivity, els, dofmap, nips, nts, Val{2})
@@ -54,7 +56,15 @@ timeslider = Slider(controlview[1,2], range = ts, startvalue = last(ts), update_
 timeslidertext = map!(Observable{Any}(), timeslider.value) do val
 	return "t=$val"
 end
+
+dispmult = Slider(controlview[3,2], range = [1,10,100,1000,10000,100000], startvalue=1, update_while_dragging=false)
+multslidertext = map!(Observable{Any}(), dispmult.value) do val
+	return "mult=$val"
+end
 Label(controlview[1,1], text=timeslidertext)
+Label(controlview[3,1], text=multslidertext)
+
+
 fieldview = controlview[2,2] = GridLayout()
 itemmenu = Menu(fieldview[1,1], options=["U", "σ", "εpl"])
 fieldmenu = Menu(fieldview[1,2], options=["xx", "yy", "xy", "eq"])
@@ -80,13 +90,13 @@ pdom = dom.processes[1]
 X = pdom.nodes[:,1]
 Y = pdom.nodes[:,2]
 
-Ux = map!(Observable{Any}(), timeslider.value) do val
+Ux = map!(Observable{Any}(), timeslider.value, dispmult.value) do val, mult
 	ti = findfirst(x->x==val, dom.timesteps)
-	pdom.postdata.timesteps[ti].pdat[:U][:,1]
+	pdom.postdata.timesteps[ti].pdat[:U][:,1].*mult
 end
-Uy = map!(Observable{Any}(), timeslider.value) do val
+Uy = map!(Observable{Any}(), timeslider.value, dispmult.value) do val, mult
 	ti = findfirst(x->x==val, dom.timesteps)
-	pdom.postdata.timesteps[ti].pdat[:U][:,2]
+	pdom.postdata.timesteps[ti].pdat[:U][:,2].*mult
 end
 Xd = map!(Observable{Any}(), Ux) do _Ux
 	X .+ _Ux
@@ -154,14 +164,14 @@ end
 
 
 
-tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=17)
+tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=80, colormap=:prism)
 
 faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
 #mesh = map!(Observable{Any}(), points) do p
 #	GeometryBasics.Mesh(p, faces)
 #end
 #wireframe!(ax, mesh, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
-Colorbar(mainview[1,2], limits=postData_limits)
+Colorbar(mainview[1,2], limits=postData_limits,colormap=:prism)
 f
 
 #function facecolor(vertices,faces,facecolors)

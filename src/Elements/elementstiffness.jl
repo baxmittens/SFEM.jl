@@ -9,16 +9,23 @@
 
 using LinearAlgebra, StaticArrays
 
-function response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+#@generated function σ_dev(σ::SVector{VOIGTDIM,Float64}) where {VOIGTDIM}
+#	@assert VOIGTDIM==3 || VOIGTDIM==6 "Error Voigt notation. VOIGTDIM=$VOIGTDIM"
+#	if VOIGTDIM==3
+#
+#	else
+#		
+#	end
+#end
+
+function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     # Materialparameter
-    E = 2.1e11
-    ν = 0.3
-    σy = 200.0
+    E,ν,σy = matpars.E, matpars.ν, matpars.σy
     G  = E / (2*(1+ν))
 
     # 2D Elastizitätsmatrix (plane strain)
-    ℂ = MaterialStiffness(Val{2}, E, ν)
-    αT = SVector{3,Float64}(1e-5,1e-5,0.0)
+    ℂ = MaterialStiffness(Val{2}, matpars)
+    αT = thermal_expansivity(Val{2}, matpars)
 
     # Trialspannung
     σtr = ℂ * (εtr - εpl - αT.*ΔT)
@@ -66,29 +73,29 @@ end
 	end
 end
 
-function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
+function ipStiffness(state, matpars, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
-	ℂnum = grad(x->response(x, εpl, ΔT), εtr)
+	ℂnum = grad(x->response(matpars, x, εpl, ΔT), εtr)
 	dVw = detJ*w
 	return 𝐁tr*ℂnum*𝐁*dVw
 end
 
-function ipRint(state, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
+function ipRint(state, matpars, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	dVw = detJ*w
 	εtr = 𝐁*nodalU
-	σtr = response(εtr, εpl, ΔT)[1]
+	σtr = response(matpars, εtr, εpl, ΔT)[1]
 	return transpose(𝐁)*σtr*dVw
 end
 
-@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, detJs, wips) where {NIPs,NNODES,DIM}
+@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, matpars, 𝐁s, nodalU, εpls, detJs, wips) where {NIPs,NNODES,DIM}
 	DIMTimesNNODES = DIM*NNODES
 	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
-            Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
+			Rel += ipRint(state[$ip], matpars, 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
+            Kel += ipStiffness(state[$ip], matpars, 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -119,9 +126,9 @@ function elStiffnessVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, 
 	return 𝐁s, nodalU, εpls, detJs, wips
 end
 
-function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, matpars, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐁s, nodalU, εpls, detJs, wips = elStiffnessVals(el, dofmap, U, shapeFuns, actt)
-	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, detJs, wips)
+	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, el.matpars, 𝐁s, nodalU, εpls, detJs, wips)
 end
 
 function ipMass(𝐍, detJ, w)
@@ -178,7 +185,7 @@ end
 	end
 end
 
-function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes, Mat}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes, Mat}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
@@ -189,15 +196,15 @@ function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) whe
 	return elPost(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
 end
 
-function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁, nodalU, actt)
+function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, matpars, 𝐁, nodalU, actt)
 	εtr = 𝐁*nodalU
 	εpl = actt>1 ? state.εpl[actt-1] : zeros(SVector{3,Float64})
-	state.σtr,state.εpltr = response(εtr, εpl)
+	state.σtr,state.εpltr = response(matpars, εtr, εpl)
 	return nothing
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐁s, nodalU, _, _, _ = elStiffnessVals(el, dofmap, U, shapeFuns, actt)
-	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, el.matpars, 𝐁, nodalU, actt), el.state.state, 𝐁s)
 	return nothing
 end

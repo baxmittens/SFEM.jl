@@ -196,7 +196,7 @@ function integrateTM!(elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N
 end
 
 function integrate!(dom::Domain{Tuple{ProcessDomain{LinearElasticity, T1, ESF1, D1}, ProcessDomain{HeatConduction, T2, ESF2, D2}}}) where {T1,T2,ESF1,ESF2,D1,D2}
-	Δt = dom.actt > 1 ? dom.timesteps[dom.actt]-dom.timesteps[dom.actt-1] : 0.0
+	Δt = dom.actt > 1 ? dom.timesteps[dom.actt]-dom.timesteps[dom.actt-1] : 1.0
 	integrateTM!(dom.mma.elMats, dom.processes, dom.mma.U, dom.mma.Uprev, dom.actt, Δt)
 	return nothing
 end

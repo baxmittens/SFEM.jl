@@ -20,7 +20,14 @@ function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {
     ]
 end
 
-function MaterialStiffness(::Type{Val{2}}, E, ν)
-	fac = E/((1+ν)*(1-2*ν))
-	return fac*SMatrix{3,3,Float64,9}(1-ν,ν,0.,ν,1-ν,0.,0.,0.,(1-2*ν)/2.0)
+function MaterialStiffness(::Type{Val{2}}, matpars::MatPars)
+	E,ν = matpars.E, matpars.ν
+    fac = E/((1+ν)*(1-2*ν))
+	return fac*SMatrix{3,3,Float64,9}(1.0-ν,ν,0.,ν,1-ν,0.,0.,0.,(1.0-2.0*ν)/2.0)
+end
+function thermal_conductivity(::Type{Val{2}}, matpars::MatPars)
+    return SMatrix{2,2,Float64,4}(matpars.k_x,0.,0.,matpars.k_y)
+end
+function thermal_expansivity(::Type{Val{2}}, matpars::MatPars)
+   return SVector{3,Float64}(matpars.α_Tx,matpars.α_Ty,0.0)
 end
