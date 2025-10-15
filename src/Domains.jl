@@ -97,9 +97,10 @@ function setBC!(dom::Domain, eladom::ProcessDomain{LinearElasticity,T}, ls::Vect
 	inds_right_middle = findall(x->isapprox(x[1],10.0,atol=1e-9)&&isapprox(x[2],0.0,atol=1e-9), eachrow(nodes))
 	
 	left_bc_x = dofmap[1,inds_left]
-	left_bc_y = dofmap[2,inds_left_middle]
+	left_bc_y = dofmap[2,inds_left]
 	right_bc_x = dofmap[1,inds_right]
-	right_bc_y = dofmap[2,inds_right_middle]
+	#right_bc_y = dofmap[2,inds_right_middle]
+	right_bc_y = dofmap[2,inds_right]
 	
 	ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
 	return vcat(left_bc_x, left_bc_y, right_bc_x, right_bc_y)
@@ -140,6 +141,7 @@ function setBCandUCMaps!(dom::Domain)
 	empty!(dom.cmap)
 	foreach((pdom,ls)->setBCandCMap!(dom, pdom, ls), dom.processes, dom.loadsteps)
 	append!(dom.ucmap, setdiff(1:dom.ndofs, dom.cmap))
+	resize!(dom.mma.Ftmp, length(dom.ucmap))
 	return nothing
 end
 
@@ -223,6 +225,9 @@ function integrate!(dom::Domain{Tuple{PD}}) where {PD}
 	return nothing
 end
 
+using IterativeSolvers
+using IncompleteLU
+
 function solve!(dom::Domain)
 	ucmap,cmap = dom.ucmap, dom.cmap
 	t1 = time()
@@ -230,20 +235,23 @@ function solve!(dom::Domain)
 	t2 = time()
 	println("Integrating element matrices took $(round(t2-t1,digits=8)) seconds")
 	Kglob = assemble!(dom)
-	F,ΔU,U = dom.mma.F,dom.mma.ΔU,dom.mma.U
-	rhs = F[ucmap] -  Kglob[ucmap, cmap] * ΔU[cmap]
-	Klgobuc = Kglob[ucmap, ucmap]
 	t3 = time()
 	println("Assembling blfs and lfs took $(round(t3-t2,digits=8)) seconds")
+
+	F,ΔU,U,Ftmp = dom.mma.F,dom.mma.ΔU,dom.mma.U,dom.mma.Ftmp
+	mul!(Ftmp, Kglob[ucmap, cmap], ΔU[cmap])
+	Ftmp .= F[ucmap] .- Ftmp
+	Klgobuc = Kglob[ucmap, ucmap]
+	
 	if isempty(dom.mma.luKglob)
 		luKglob = lu(Klgobuc)
 		push!(dom.mma.luKglob, luKglob)
-		ΔU[ucmap] .= luKglob \ rhs
 	else
 		luKglob = first(dom.mma.luKglob)
 		lu!(luKglob, Klgobuc)
-		ΔU[ucmap] .= luKglob \ rhs
 	end
+	ΔU[ucmap] .= luKglob \ Ftmp
+	
 	t4 = time()
 	println("Solving the linear system took $(round(t4-t3,digits=8)) seconds")
 	percsolver =  @sprintf("%.2f", (t4-t3)/(t4-t1)*100)
@@ -347,7 +355,7 @@ function newtonraphson!(dom::Domain)
 	numit = 0
 	str = "\nconvergence history"
 	@info "Start Newton-Raphson iteration"
-	while normdU>1e-9 && numit < 10
+	while normdU>1e-7 && numit < 10
 		@info "Newton-Raphson iteration $(numit+1)"
 		solve!(dom)
 		normdU = norm(dom.mma.ΔU)

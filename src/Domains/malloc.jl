@@ -25,6 +25,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	ΔU::Vector{Float64}
 	Uprev::Vector{Float64}
 	F::Vector{Float64}
+	Ftmp::Vector{Float64}
 	I::Vector{Int}
 	J::Vector{Int}
 	V::Vector{Float64}
@@ -58,7 +59,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
 		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
-		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats,Vector{SparseMatrixCSC{Float64, Int64}}(),Vector{Int}(undef, nnz_total), Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}())
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,Vector{Float64}(),I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats,Vector{SparseMatrixCSC{Float64, Int64}}(),Vector{Int}(undef, nnz_total), Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}())
 	end
 end
 

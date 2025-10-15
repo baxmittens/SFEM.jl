@@ -16,13 +16,15 @@ using StaticArrays
 using LinearAlgebra
 #using ProfileView
 
-meshfilepath = "../models/2d/beam.msh"
+meshfilepath = "../models/2d/beam_grob.msh"
+#meshfilepath = "../models/2d/beam_tri6.msh"
 mesh = GmshMesh(meshfilepath);
-nips = 4
+nips = 7
 ts = collect(0.0:-0.1:-0.5)
 nts = length(ts)
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 els = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
+#els = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
 ndofs = size(mesh.nodes,1)*2
 dofmap = convert(Matrix{Int}, reshape(1:ndofs,2,:))
 linela = ProcessDomain(LinearElasticity, mesh.nodes, mesh.connectivity, els, dofmap, nips, nts, Val{2})

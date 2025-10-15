@@ -16,23 +16,28 @@ using StaticArrays
 using LinearAlgebra
 #using ProfileView
 
-meshfilepath = "../models/2d/beam.msh"
-mesh = GmshMesh(meshfilepath);
-nips = 4
+meshfilepath = "../models/2d/beam_tri6.msh"
+meshfilepath1 = "../models/2d/beam.msh"
+meshtri6 = GmshMesh(meshfilepath);
+meshtri3 = GmshMesh(meshfilepath1);
+nips = 7
 #ls = [collect(0.0:-0.25:-0.5),collect(0.0:-10.0:-20.0)]
 ls = [vcat(zeros(6),collect(0.0:-0.0005:-0.008)),vcat(zeros(1),ones(Float64,22)*-100)]
 ts = collect(0.0:1.0:22.0)
+ls,ts = [[0.0,0.0,-0.2],[0.0,-250.0,-500.0]],[0.0,1.0,2.0]
 nts = length(ts)
-states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
-els1 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
-nnodes = size(mesh.nodes,1)
-els2 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(mesh.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
-ndofs1 = size(mesh.nodes,1)*2
+states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in meshtri6.connectivity];
+els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(meshtri6.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(meshtri6.connectivity, states)];
+#els2 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(meshtri3.nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(meshtri3.connectivity, states)];
+els2 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(meshtri6.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, Val{nips}) for (elinds,state) in zip(meshtri6.connectivity, states)];
+ndofs1 = size(meshtri6.nodes,1)*2
 dofmap1 = convert(Matrix{Int}, reshape(1:ndofs1,2,:))
-ndofs2 = size(mesh.nodes,1)*1
+#ndofs2 = size(meshtri3.nodes,1)*1
+ndofs2 = size(meshtri6.nodes,1)*1
 dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
-linelasticity = ProcessDomain(LinearElasticity, mesh.nodes, mesh.connectivity, els1, dofmap1, nips, nts, Val{2})
-heatconduction = ProcessDomain(HeatConduction, mesh.nodes, mesh.connectivity, els2, dofmap2, nips, nts, Val{1})
+linelasticity = ProcessDomain(LinearElasticity, meshtri6.nodes, meshtri6.connectivity, els1, dofmap1, nips, nts, Val{2})
+#heatconduction = ProcessDomain(HeatConduction, meshtri3.nodes, meshtri3.connectivity, els2, dofmap2, nips, nts, Val{1})
+heatconduction = ProcessDomain(HeatConduction, meshtri6.nodes, meshtri6.connectivity, els2, dofmap2, nips, nts, Val{1})
 #dom = Domain((linelasticity,heatconduction),[ls[1][1:2],ls[2][1:2]],ts[1:2])
 dom = Domain((linelasticity,heatconduction),ls,ts)
 tsolve!(dom)

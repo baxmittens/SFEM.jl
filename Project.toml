@@ -14,6 +14,8 @@ MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 MUMPS = "55d2b088-9f4e-11e9-26c0-150b02ea6a46"
 Pardiso = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
+IncompleteLU = "40713840-3770-5561-ab4c-a76e7d0d7895"
+IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 
 [compat]
 LinearAlgebra = "1.11.0"
