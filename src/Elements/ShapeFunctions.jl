@@ -37,7 +37,6 @@ struct EvaluatedShapeFunctions{DIM, NNodes, NIPs, NNodestimesDIM}
     wips::SVector{NIPs, Float64}
 end
 
-
 function EvaluatedShapeFunctions(refel::C, intrulefun::F, nips::Int) where {C<:ContinuumRefElement, F<:Function}
     N = dim(refel)
     ((ξs,ηs),w) = intrulefun(N, nips)

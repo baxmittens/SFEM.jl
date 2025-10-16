@@ -111,7 +111,7 @@ end
     end
 end
 
-function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T}, els2::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T<:Tri}
+function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T1<:Tri,T2<:Tri}
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els1)
     fill!(F,0.0)
@@ -138,7 +138,7 @@ function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}
     return nothing
 end
 
-function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T}, els2::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T<:Tri}
+function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T1<:Tri,T2<:Tri}
     Kglob.nzval .= 0.0
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els1)

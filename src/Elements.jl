@@ -2,7 +2,7 @@ module Elements
 
 using StaticArrays
 import LinearAlgebra
-import ...SFEM: LinearElasticity, HeatConduction, MaterialLaw, LinearElastic, J2Plasticity
+import ...SFEM: LinearElasticity, HeatConduction
 
 abstract type GenericRefElement
 end
@@ -40,9 +40,9 @@ dim(el::C) where {C<:GenericRefElement} = size(el.nodes,1)
 nnodes(el::C) where {C<:GenericRefElement} = size(el.nodes,2)
 
 
-abstract type GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
+abstract type GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 end
-abstract type ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes, M} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
+abstract type ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 end
 
 mutable struct IPStateVars2D
@@ -87,9 +87,11 @@ struct MatPars
 	E::Float64
 	ν::Float64
 	σy::Float64
+	bodyforceM::Function
+	bodyforceT::Function
 end
 
-struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes, M} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes, M}
+struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
 	inds::SVector{NNODES,Int}
 	state::ElementStateVars2D{NIPs}
@@ -102,12 +104,12 @@ nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIM
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
 
-function Tri3(s::Type{M}, nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs, M<:MaterialLaw} 
-	return Tri{2,3,NIPs,6,M}(nodes, inds, state, matpars)
+function Tri3(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs} 
+	return Tri{2,3,NIPs,6}(nodes, inds, state, matpars)
 end
 
-function Tri6(::Type{M}, nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs, M<:MaterialLaw}
-	return Tri{2,6,NIPs,12,M}(nodes, inds, state, matpars)
+function Tri6(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs}
+	return Tri{2,6,NIPs,12}(nodes, inds, state, matpars)
 end
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}

@@ -19,6 +19,20 @@ function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {
         gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
     ]
 end
+function NMat(N::SVector{3,Float64})
+    return @SMatrix [
+        N[1]  0.0   N[2]  0.0   N[3]    0.0
+        0.0   N[1]  0.0   N[2]  0.0     N[3]
+    ]
+end
+function NMat(N::SVector{6,Float64})
+    return @SMatrix [
+        N[1]  0.0   N[2]  0.0   N[3]    0.0     N[4]  0.0   N[5]  0.0   N[6]    0.0 
+        0.0   N[1]  0.0   N[2]  0.0     N[3]    0.0   N[4]  0.0   N[5]  0.0     N[6]
+    ]
+end
+
+
 
 function MaterialStiffness(::Type{Val{2}}, matpars::MatPars)
 	E,ν = matpars.E, matpars.ν
