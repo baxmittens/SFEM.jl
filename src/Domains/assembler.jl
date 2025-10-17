@@ -31,7 +31,7 @@ end
     end
 end
 
-function assemble!(mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ::Type{Val{DOFMAPDIM1}}) where {N,NN,T<:Tri,DOFMAPDIM1}
+function assemble!(mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T1}, els_neumann::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, elFN::Vector{SVector{M,Float64}}, ::Type{Val{DOFMAPDIM1}}) where {N,M,NN,T1<:Tri,T2,DOFMAPDIM1}
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els)
     fill!(F,0.0)
@@ -52,10 +52,15 @@ function assemble!(mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T}, elMat
         end
         @inbounds F[eldofs] .-= Rint
     end
+    for i in 1:length(els_neumann)
+        @inbounds el = els[i]
+        eldofs = _dofmap(Val{DOFMAPDIM1}, Val{M}, dofmap, el.inds)
+        @inbounds F[eldofs] .+= elFN[i]
+    end
     return nothing
 end
 
-function assemble!(Kglob::SparseMatrixCSC,mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, ::Type{Val{DOFMAPDIM1}}) where {N,NN,T<:Tri,DOFMAPDIM1}
+function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T1}, els_neumann::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, elFN::Vector{SVector{M,Float64}}, ::Type{Val{DOFMAPDIM1}}) where {N,M,NN,T1<:Tri,T2,DOFMAPDIM1}
     Kglob.nzval .= 0.0
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els)
@@ -78,17 +83,22 @@ function assemble!(Kglob::SparseMatrixCSC,mma::DomainMalloc, dofmap::Matrix{Int}
         end
         @inbounds F[eldofs] .-= Rint
     end
+    for i in 1:length(els_neumann)
+        @inbounds el = els[i]
+        eldofs = _dofmap(Val{DOFMAPDIM1}, Val{M}, dofmap, el.inds)
+        @inbounds F[eldofs] .+= elFN[i]
+    end
     return nothing
 end
 
 function assemble!(dom::Domain{Tuple{ProcessDomain{P,T,E,DMD1}}}) where {P,T,E,DMD1}
     pdom = first(dom.processes)
     if isempty(dom.mma.Kglob)
-        assemble!(dom.mma, pdom.dofmap, pdom.els, dom.mma.elMats, Val{DMD1})
+        assemble!(dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.Fn, Val{DMD1})
         push!(dom.mma.Kglob,SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr))
         build_index_mapping!(dom)
     else
-        assemble!(first(dom.mma.Kglob), dom.mma, pdom.dofmap, pdom.els, dom.mma.elMats, Val{DMD1})
+        assemble!(first(dom.mma.Kglob), dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.Fn, Val{DMD1})
     end
     return first(dom.mma.Kglob)
 end
@@ -111,7 +121,7 @@ end
     end
 end
 
-function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T1<:Tri,T2<:Tri}
+function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, els_neumann1::Vector{T3}, els_neumann2::Vector{T4}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, elFN1::Vector{SVector{M1,Float64}}, elFN2::Vector{SVector{M2,Float64}}) where {N,NN,M1,M2,T1<:Tri,T2<:Tri,T3,T4}
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els1)
     fill!(F,0.0)
@@ -135,10 +145,29 @@ function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}
         end
         @inbounds F[eldofs] .-= Rint
     end
+    for i in 1:length(els_neumann1)
+        @inbounds el = els_neumann1[i]
+        eldofs = _dofmap(Val{2}, Val{M1}, dofmap1, el.inds)
+        @inbounds F[eldofs] .+= elFN1[i]
+    end
+    for i in 1:length(els_neumann2)
+        @inbounds el = els_neumann2[i]
+        eldofs = _dofmap(Val{1}, Val{M2}, dofmap2, el.inds)
+        @inbounds F[eldofs] .+= elFN2[i]
+    end
     return nothing
 end
-
-function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}) where {N,NN,T1<:Tri,T2<:Tri}
+#    for i in 1:length(els_neumann1)
+#        @inbounds el = els_neumann1[i]
+#        eldofs = dofmap1[SVector{2,Int}(1,2),el.inds][:]
+#        @inbounds F[eldofs] .+= elFN1[i]
+#    end
+#    for i in 1:length(els_neumann2)
+#        @inbounds el = els_neumann2[i]
+#        eldofs = dofmap2[1,el.inds]
+#        @inbounds F[eldofs] .+= elFN2[i]
+#    end
+function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, els_neumann1::Vector{T3}, els_neumann2::Vector{T4}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, elFN1::Vector{SVector{M1,Float64}}, elFN2::Vector{SVector{M2,Float64}}) where {N,NN,M1,M2,T1<:Tri,T2<:Tri,T3,T4}
     Kglob.nzval .= 0.0
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
     nels = length(els1)
@@ -164,17 +193,27 @@ function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{In
         end
         @inbounds F[eldofs] .-= Rint
     end
+    for i in 1:length(els_neumann1)
+        @inbounds el = els_neumann1[i]
+        eldofs = _dofmap(Val{2}, Val{M1}, dofmap1, el.inds)
+        @inbounds F[eldofs] .+= elFN1[i]
+    end
+    for i in 1:length(els_neumann2)
+        @inbounds el = els_neumann2[i]
+        eldofs = _dofmap(Val{1}, Val{M2}, dofmap2, el.inds)
+        @inbounds F[eldofs] .+= elFN2[i]
+    end
     return nothing
 end
 
 function assemble!(dom::Domain{Tuple{PD1,PD2}}) where {PD1,PD2}
     pdom1,pdom2 = dom.processes
     if isempty(dom.mma.Kglob)
-        assemble!(dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, dom.mma.elMats)
+        assemble!(dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, pdom1.els_neumann, pdom2.els_neumann, dom.mma.elMats, pdom1.mma.elFn, pdom2.mma.elFn)
         push!(dom.mma.Kglob,SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr))
         build_index_mapping!(dom)
     else
-        assemble!(first(dom.mma.Kglob), dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, dom.mma.elMats)
+        assemble!(first(dom.mma.Kglob), dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, pdom1.els_neumann, pdom2.els_neumann, dom.mma.elMats, pdom1.mma.elFn, pdom2.mma.elFn)
     end
     return first(dom.mma.Kglob)
 end

@@ -1,7 +1,25 @@
 using StaticArrays
 
 function gaussSimplex(dim::Int, nip::Int)
-	if dim == 2
+	if dim == 1
+		if nip == 1
+			r  = 0.
+			w  = 2.
+			return ((r,), w)
+		elseif nip == 2
+			k  = 5.773502691896258e-01 # 1 / sqrt( 3);
+			r  = SVector{2,Float64}(-k, k)
+			w  = SVector{2,Float64}(1.0, 1.0)
+			return ((r,), w)
+		elseif nip == 3
+			k  = 7.745966692414834e-01 # sqrt( 3 / 5)
+			wm = 8.888888888888889e-01 # 8/9 = weight at middle of edge
+			wc = 5.555555555555556e-01 # 5/9 = weight at corner of edge
+			r  = SVector{3,Float64}(-k, 0.0, k)
+			w  = SVector{3,Float64}(wc, wm, wc)
+			return ((r,), w)
+		end
+	elseif dim == 2
 	#  integration points for two dimensions
 		if nip == 1 # polynomial degree 1
 			m1 = 0.333333333333333

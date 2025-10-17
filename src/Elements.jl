@@ -10,8 +10,34 @@ abstract type ContinuumRefElement <: GenericRefElement
 end
 abstract type TriRefElement <: ContinuumRefElement
 end
+abstract type LineRefElement <: GenericRefElement
+end
 
 include("./Elements/ShapeFunctions.jl")
+
+struct Line2Ref <: LineRefElement
+	nodes::SMatrix{1,2,Float64,2}
+	shapeFuns::Tuple
+	pOrder::Int
+	function Line2Ref()
+		pOrder = 1
+		nodes = SMatrix{1,2,Float64,2}(-1.0, 1.0)
+		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
+		return new(nodes, shapeFuns, pOrder)
+	end
+end
+
+struct Line3Ref <: LineRefElement
+	nodes::SMatrix{1,3,Float64,3}
+	shapeFuns::Tuple
+	pOrder::Int
+	function Line3Ref()
+		pOrder = 2
+		nodes = SMatrix{1,3,Float64,3}(-1.0, 0.0, 1.0)
+		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
+		return new(nodes, shapeFuns, pOrder)
+	end
+end
 
 struct Tri3Ref <: TriRefElement
 	nodes::SMatrix{2,3,Float64,6}
@@ -87,11 +113,18 @@ struct MatPars
 	E::Float64
 	ν::Float64
 	σy::Float64
+	T0::Float64
 	bodyforceM::Function
 	bodyforceT::Function
 	materialID::Int
 end
 
+struct Line{DIM, NNODES, NIPs, DIMtimesNNodes} <: GenericElement{DIM, NNODES, NIPs, DIMtimesNNodes}
+	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
+	inds::SVector{NNODES,Int}
+	#state::ElementStateVars2D{NIPs}
+	#matpars::MatPars
+end
 struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
 	nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}
 	inds::SVector{NNODES,Int}
@@ -99,11 +132,20 @@ struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, N
 	matpars::MatPars
 end
 
+_NIPs(el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes} = NIPs
+_NIPs(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes} = NIPs
 dim(el::Tri) = 2
 nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIMtimesNNodes} = NNODES
 σ_avg(el::C, actt::Int) where {C<:GenericElement} = σ_avg(el.state, actt)
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
+RefEl(::Type{Line{DIM, 2, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Line2Ref()
+RefEl(::Type{Line{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Line3Ref()
+RefEl(::Type{Nothing}) = Line2Ref()
+
+function Line(nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, inds, ::Type{Val{NIPs}}) where {DIM,NNODES,DIMtimesNNodes,NIPs}
+	return Line{DIM,NNODES,NIPs,DIMtimesNNodes}(nodes, inds)
+end
 
 function Tri3(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs} 
 	return Tri{2,3,NIPs,6}(nodes, inds, state, matpars)

@@ -2,18 +2,14 @@ ENV["OMP_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["MKL_NUM_THREADS"] = Base.Threads.nthreads()
 ENV["OPENBLAS_NUM_THREADS"] = Base.Threads.nthreads()
 
-#using Logging
-#global_logger(ConsoleLogger(stdout))
-
 import SFEM
 import SFEM: LinearElasticity, HeatConduction
-import SFEM.Elements: Tri3, Tri6, Tri, ElementStateVars2D, MatPars
+import SFEM.Elements: Tri3, Tri6, Tri, ElementStateVars2D, MatPars, Line
 import SFEM.MeshReader: GmshMesh
 import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
 
 using StaticArrays
 using LinearAlgebra
-#using ProfileView
 
 meshfilepath = "../models/2d/beam_medium_tri6.msh"
 mesh = GmshMesh(meshfilepath);
@@ -24,15 +20,16 @@ nts = length(ts)
 
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in mesh.connectivity];
 
-funT(x, actt) = x[1]>5 && x[1]<6 && actt > 1 ? 0.0 : 0.0
-funM(x, actt) = actt > 1 ? SVector{2,Float64}(0.0,-9.81) : SVector{2,Float64}(0.0,0.0)
-matpars = MatPars(7000.0, 450.0, 1e-5, 1e-5, 0.0, 50.0, 50.0, 0.0, 2.1e11, 0.3, 200.0, funM, funT, 1)
+fun_bodyforce_T(x, matpars, actt, ts=ts) = x[1]>5 && x[1]<6 && actt > 1 ? 0.0 : 0.0
+fun_bodyforce_M(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
+#matpars = MatPars(7000.0, 450.0, 1e-5, 1e-5, 0.0, 50.0, 50.0, 0.0, 2.1e11, 0.3, 200.0, fun_bodyforce_M, fun_bodyforce_T,  1)
+matpars = MatPars(7000.0, 450.0, 1e-5, 1e-5, 0.0, 50.0, 50.0, 0.0, 2.1e11, 0.3, Inf, fun_bodyforce_M, fun_bodyforce_T,  1)
 els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matpars, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
 els2 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(mesh.nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matpars, Val{nips}) for (elinds,state) in zip(mesh.connectivity, states)];
 
 function dirichletM(ΔU, U, nodes, dofmap, actt)
-	#loadsteps = vcat(zeros(6),collect(0.0:-0.0005:-0.002))
-	#Uval = loadsteps[actt]
+	loadsteps = vcat(zeros(1),collect(0.0:-0.0005:-0.002))
+	Uval = loadsteps[actt]
 	inds_left = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(nodes))
 	inds_right = findall(x->isapprox(x[1],10.0,atol=1e-9), eachrow(nodes))
 	inds_left_middle = findall(x->isapprox(x[1],0.0,atol=1e-9)&&isapprox(x[2],0.0,atol=1e-9), eachrow(nodes))
@@ -41,11 +38,10 @@ function dirichletM(ΔU, U, nodes, dofmap, actt)
 	left_bc_y = dofmap[2,inds_left_middle]
 	right_bc_x = dofmap[1,inds_right]
 	right_bc_y = dofmap[2,inds_right_middle]
-	#ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
+	ΔU[right_bc_y] .= (Uval .- U[right_bc_y])
 	#return vcat(left_bc_x, left_bc_y)
 	#return vcat(left_bc_x, left_bc_y, right_bc_x, right_bc_y)
-	#return vcat(left_bc_x, left_bc_y, right_bc_y)
-	return vcat(left_bc_x, left_bc_y, right_bc_y)
+	return vcat(left_bc_x, left_bc_y)
 end
 
 function dirichletT(ΔU, U, nodes, dofmap, actt)
@@ -57,7 +53,8 @@ function dirichletT(ΔU, U, nodes, dofmap, actt)
 	uc_x_10 = dofmap[1,inds2]
 	#ΔU[uc_x_0] .= (Uval .- U[uc_x_0])
 	#ΔU[uc_x_10] .= (Uval .- U[uc_x_10])
-	return vcat(uc_x_0, uc_x_10)
+	#return vcat(uc_x_0, uc_x_10)
+	return uc_x_0
 	#return Int[]
 end
 
@@ -66,8 +63,32 @@ dofmap1 = convert(Matrix{Int}, reshape(1:ndofs1,2,:))
 ndofs2 = size(mesh.nodes,1)*1
 dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
 
-linelasticity = ProcessDomain(LinearElasticity, mesh.nodes, mesh.connectivity, els1, dofmap1, nips, nts, Val{2}, Nothing)
-heatconduction = ProcessDomain(HeatConduction, mesh.nodes, mesh.connectivity, els2, dofmap2, nips, nts, Val{1}, Nothing, fun_bodyforce=fun_bodyforce_t, els_bodyforce=els_bodyforce_t)
+neumann_inds = findall(x->isapprox(x[1],10.0,atol=1e-5), eachrow(mesh.nodes))
+lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
+nips_neumann = 3
+neumann_els_M = Line{2,3,nips_neumann,6}[]
+neumann_els_T = Line{2,3,nips_neumann,6}[]
+for el in els1
+	for line in lines
+		inds = el.inds[line]
+		if all(map(x->x ∈ neumann_inds, inds))
+			push!(neumann_els_M, Line(SMatrix{2,3,Float64,6}(mesh.nodes[inds,1:2]'), inds, Val{nips_neumann}))
+		end
+	end
+end
+for el in els2
+	for line in lines
+		inds = el.inds[line]
+		if all(map(x->x ∈ neumann_inds, inds))
+			push!(neumann_els_T, Line(SMatrix{2,3,Float64,6}(mesh.nodes[inds,1:2]'), inds, Val{nips_neumann}))
+		end
+	end
+end
+fun_neumann_T(x, actt, ts=ts) = actt > 1 ? 100.0 : 0.0
+fun_neumann_M(x, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,-10000.0) : SVector{2,Float64}(0.0,0.0)
+
+linelasticity = ProcessDomain(LinearElasticity, mesh.nodes, mesh.connectivity, els1, dofmap1, nts, Val{2}, Line{2,3,nips_neumann,6}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
+heatconduction = ProcessDomain(HeatConduction, mesh.nodes, mesh.connectivity, els2, dofmap2, nts, Val{1}, Line{2,3,nips_neumann,6}, els_neumann=neumann_els_T, fun_neumann=fun_neumann_T)
 dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichletT=dirichletT)
 tsolve!(dom)
 
@@ -75,7 +96,7 @@ tsolve!(dom)
 plotting=true
 if plotting
 using GLMakie
-using GeometryBasics
+import GeometryBasics
 using LinearAlgebra
 
 f = Figure(size=(1000,600));
@@ -134,7 +155,7 @@ Yd = map!(Observable{Any}(), Uy) do _Uy
 	Y .+ _Uy
 end
 points = map!(Observable{Any}(), Xd, Yd) do _Xd,_Yd
-	points = Point2f.(_Xd, _Yd)
+	points = GeometryBasics.Point2f.(_Xd, _Yd)
 end
 
 on(points) do points

@@ -7,7 +7,7 @@ using LinearAlgebra
 using Printf
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, elStiffnessTM, elStiffnessT, saveHistory!, 
-	Tri, Tri3, Tri6, elMass, elPost, elPostT, updateTrialStates!, initStates!, σ_avg, RefEl, flatten_tuple
+	Tri, Tri3, Tri6, elMass, elPost, elPostT, updateTrialStates!, initStates!, σ_avg, RefEl, flatten_tuple, _NIPs, elFM, elFT
 import ..IntegrationRules: gaussSimplex
 import ...SFEM: Process, LinearElasticity, HeatConduction
 
@@ -18,6 +18,7 @@ mutable struct ProcessDomain{P,T1,T2,ESF1,ESF2,DMD1}
 	nodes::Matrix{Float64}
 	connectivity::Vector{Vector{Int64}}
 	refel::GenericRefElement
+	refel_neumann::GenericRefElement
 	els::Vector{T1}
 	nnodes::Int
 	nels::Int
@@ -25,33 +26,38 @@ mutable struct ProcessDomain{P,T1,T2,ESF1,ESF2,DMD1}
 	shapeFuns::ESF1
 	MMat::SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}
 	postdata::PostData
-	els_neumann::Union{Nothing,Vector{T2}}
-	fun_neumann::Union{Nothing,Function}
+	els_neumann::Vector{T2}
 	shapeFuns_neumann::ESF2
-	els_bodyforce::Union{Nothing,Vector{T1}}
-	fun_bodyforce::Union{Nothing,Function}
-	function ProcessDomain(::Type{P}, nodes, connectivity, els::Vector{T1}, dofmap, nips, nts, ::Type{Val{DOFMAPDIM1}}, 
-		::Type{T2}; els_neumann::Union{Nothing,Vector{T2}}=nothing, fun_neumann=nothing, 
-		els_bodyforce::Union{Nothing,Vector{T1}}=nothing, fun_bodyforce=nothing) where {P<:Process,T1,T2,DOFMAPDIM1}
+	fun_neumann::Union{Nothing,Function}
+	function ProcessDomain(::Type{P}, nodes, connectivity, els::Vector{T1}, dofmap, nts, ::Type{Val{DOFMAPDIM1}}, 
+		::Type{T2}=Nothing; els_neumann::Vector{T2}=Vector{Nothing}(), fun_neumann::Union{Nothing,Function}=nothing,) where {P<:Process,T1,T2,DOFMAPDIM1}
+		nips = _NIPs(els[1])
 		refel = RefEl(T1)
+		refel_neumann = RefEl(T2)
 		nels = length(els)
 		nnodes = size(nodes,1)
-		mma = ProcessDomainMalloc(nels, Val{length(els[1].inds)}, nnodes) 
+		
 		shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
 		ESF1 = typeof(shapeFuns)
-		if !isnothing(els_neumann)
-			#shapeFuns = EvaluatedShapeFunctions(refel, gaussSimplex, nips)
-			#ESF2 = typeof(shapeFuns)
+		if !isnothing(els_neumann) && length(els_neumann) > 0
+			nips_neumann = _NIPs(els_neumann[1])
+			shapeFuns_neumann = EvaluatedShapeFunctions(refel_neumann, gaussSimplex, nips_neumann)
+			ESF2 = typeof(shapeFuns_neumann)
+			ennodes_neumann = length(els_neumann[1].inds)*DOFMAPDIM1
+			nels_neumann = length(els_neumann)
 		else
 			shapeFuns_neumann = nothing
 			ESF2 = Nothing
+			ennodes_neumann = 1
+			nels_neumann = 0
 		end
+		mma = ProcessDomainMalloc(nels, Val{length(els[1].inds)}, nnodes, nels_neumann, Val{ennodes_neumann}) 
 		@threads for i in 1:nels
 			el = els[i]
 			mma.elMMats[i] = elMass(el, shapeFuns)
 		end
 		MMat = lu(assembleMass!(mma.Im, mma.Jm, mma.Vm, els, mma.elMMats, nnodes))
-		return new{P,T1,T2,ESF1,ESF2,DOFMAPDIM1}(mma, nodes, connectivity, refel, els, nnodes, nels, dofmap, shapeFuns, MMat, PostData(P, nnodes, nts, nels), els_neumann, fun_neumann, shapeFuns_neumann, els_bodyforce, fun_bodyforce)
+		return new{P,T1,T2,ESF1,ESF2,DOFMAPDIM1}(mma, nodes, connectivity, refel, refel_neumann, els, nnodes, nels, dofmap, shapeFuns, MMat, PostData(P, nnodes, nts, nels), els_neumann, shapeFuns_neumann, fun_neumann)
 	end
 end
 
@@ -120,6 +126,22 @@ function setBCandUCMaps!(dom::Domain)
 	return nothing
 end
 
+function integrate_neumann!(pdom::ProcessDomain{LinearElasticity}, actt)
+	elFn = pdom.mma.elFn
+	@threads for i in eachindex(pdom.els_neumann)
+		el = pdom.els_neumann[i]
+    	elFn[i] = elFM(pdom.fun_neumann, el, pdom.shapeFuns_neumann, actt)
+	end
+end
+
+function integrate_neumann!(pdom::ProcessDomain{HeatConduction}, actt)
+	elFn = pdom.mma.elFn
+	@threads for i in eachindex(pdom.els_neumann)
+		el = pdom.els_neumann[i]
+    	elFn[i] = elFT(pdom.fun_neumann, el, pdom.shapeFuns_neumann, actt)
+	end
+end
+
 function integrateTM!(elMats, els1, els2, dofmap1, dofmap2, shapeFuns1, shapeFuns2, U, Uprev, actt, Δt)
 	@threads for i in eachindex(els1)
 		el1 = els1[i]
@@ -127,10 +149,13 @@ function integrateTM!(elMats, els1, els2, dofmap1, dofmap2, shapeFuns1, shapeFun
     	elMats[i] = elStiffnessTM(el1, el2, dofmap1, dofmap2, U, Uprev, shapeFuns1, shapeFuns2, actt, Δt)
 	end
 end
+
 function integrateTM!(elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, pdoms::Tuple{ProcessDomain{LinearElasticity,T1},ProcessDomain{HeatConduction,T2}}, U, Uprev, actt, Δt) where {N,NN,T1,T2}
 	pdom1,pdom2 = pdoms
 	els1,els2 = pdom1.els,pdom2.els
 	integrateTM!(elMats, els1, els2, pdom1.dofmap, pdom2.dofmap, pdom1.shapeFuns, pdom2.shapeFuns, U, Uprev, actt, Δt)
+	integrate_neumann!(pdom1, actt)
+	integrate_neumann!(pdom2, actt)
 	return nothing		
 end
 
@@ -161,7 +186,9 @@ function integrate!(elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODES
 end
 function integrate!(dom::Domain{Tuple{PD}}) where {PD}
 	Δt = dom.actt > 1 ? dom.timesteps[dom.actt]-dom.timesteps[dom.actt-1] : 1.0
-	integrate!(dom.mma.elMats, dom.processes[1], dom.mma.U, dom.mma.Uprev, dom.actt, Δt)
+	pdom = dom.processes[1]
+	integrate!(dom.mma.elMats, pdom, dom.mma.U, dom.mma.Uprev, dom.actt, Δt)
+	integrate_neumann!(pdom, actt)
 	return nothing
 end
 

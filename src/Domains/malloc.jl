@@ -1,13 +1,14 @@
 
-struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
+struct ProcessDomainMalloc{ENNODES1,ENNODES2,ENNODESSQ}
 	Im::Vector{Int}
 	Jm::Vector{Int}
 	Vm::Vector{Float64}
 	σ::Matrix{Float64}
 	εpl::Matrix{Float64}
 	q::Matrix{Float64}
-	elMMats::Vector{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}}
-	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes) where {ennodes}
+	elMMats::Vector{SMatrix{ENNODES1,ENNODES1,Float64,ENNODESSQ}}
+	elFn::Vector{SVector{ENNODES2,Float64}}
+	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes, nels_neumann, ::Type{Val{ennodes_neumann}}) where {ennodes, ennodes_neumann}
 		nnz_total_mass = nels * ennodes^2
 		Im = Vector{Int}(undef, nnz_total_mass)
 		Jm = Vector{Int}(undef, nnz_total_mass)
@@ -16,7 +17,8 @@ struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
 		εpl = zeros(Float64, nnodes, 3)
 		q = zeros(Float64, nnodes, 2)
 		elMMats = Vector{SMatrix{ennodes,ennodes,Float64,ennodes*ennodes}}(undef, nels)
-		return new{ennodes,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats)
+		elFn = Vector{SVector{ennodes_neumann,Float64}}(undef, nels_neumann)
+		return new{ennodes,ennodes_neumann,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats,elFn)
 	end
 end
 

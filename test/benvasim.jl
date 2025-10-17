@@ -47,7 +47,7 @@ function lin_func(x,xmin,ymin,xmax,ymax)
 	return a*x+b
 end
 
-funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 1 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
+funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 1 && actt < 26 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
 funM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 matpars = MatPars(7000.0, 450.0, 1e-5, 1e-5, 0.0, 50.0, 50.0, 0.0, 2.1e11, 0.3, 200.0, funM, funT, 1)
 matpars0 = MatPars(6700.0, 500.0, 1.7e-05, 1.7e-05, 0.0, 16.0, 16.0, 0.0, 195000000000.0, 0.3, Inf, funM, funT, 0)
@@ -56,12 +56,6 @@ matpars2 = MatPars(2495.0, 1060.0,  2e-5, 2e-5, 0.0, 1.84, 1.84, 0.0, 5000000000
 matparsdict = Dict(0=>matpars0, 1=>matpars1, 2=>matpars2)
 els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
 els2 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
-
-els_bodyforce_t = [els2[i] for i = 1000:1005]
-function fun_bodyforce_t(acct)
-	vv = 0:100
-	return vv[acct]
-end
 
 function dirichletM(ΔU, U, nodes, dofmap, actt)
 	
@@ -80,9 +74,11 @@ end
 
 function dirichletT(ΔU, U, nodes, dofmap, actt)
 	inds_bottom = findall(x->isapprox(x[2],-100.0,atol=1e-9), eachrow(nodes))
+	inds_top = findall(x->isapprox(x[2],100.0,atol=1e-9), eachrow(nodes))
 	bottom_bc = dofmap[1,inds_bottom]
-	#return bottom_bc
-	return Int[]
+	top_bc = dofmap[1,inds_top]
+	return vcat(bottom_bc,top_bc)
+	#return Int[]
 
 end
 
@@ -91,11 +87,26 @@ dofmap1 = convert(Matrix{Int}, reshape(1:ndofs1,2,:))
 ndofs2 = size(nodes,1)*1
 dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
 
-linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nips, nts, Val{2}, Nothing)
-heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nips, nts, Val{1}, Nothing, fun_bodyforce=fun_bodyforce_t, els_bodyforce=els_bodyforce_t)
+neumann_inds = findall(x->isapprox(x[1],100.0,atol=1e-5), eachrow(nodes))
+lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
+nips_neumann = 3
+neumann_els_M = Line{2,3,nips_neumann,6}[]
+neumann_els_T = Line{2,3,nips_neumann,6}[]
+for el in els1
+	for line in lines
+		inds = el.inds[line]
+		if all(map(x->x ∈ neumann_inds, inds))
+			push!(neumann_els_M, Line(SMatrix{2,3,Float64,6}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
+		end
+	end
+end
+#fun_neumann_M(x, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
+fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+
+linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, Line{2,3,nips_neumann,6}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
+heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nts, Val{1}, Nothing)
 dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichletT=dirichletT)
 tsolve!(dom)
-
 
 plotting=true
 if plotting
@@ -240,25 +251,25 @@ Colorbar(mainview[1,2], tch) #colormap=:prism)
 #Colorbar(mainview[1,2], limits=postData_limits)
 f
 
-function facecolor(vertices,faces,facecolors)
-	v = zeros(size(faces,1)*3,2)
-	f = zeros(Int, size(faces))
-	fc = zeros(size(v,1))
-	for i in 1:size(faces,1)
-		face = faces[i,:]
-		verts = vertices[face,:]
-		j = 3*(i-1)+1
-		f[i,:] = [j,j+1,j+2]
-		v[j:j+2,:] .= verts
-		fc[j:j+2] .= facecolors[i]
-	end
-	return v,f,fc
-end
-vertices = pdom.mesh.nodes[:,1:2]
-faces = hcat(_conn...)'[:,1:3]
-facecolors = pdom.postdata.timesteps[end].pdat[:σ_avg]
-v,fa,fc = facecolor(vertices,faces,facecolors)
-cm_repo_2d = mesh!(ax, v, fa, color=fc, shading=NoShading)
+#function facecolor(vertices,faces,facecolors)
+#	v = zeros(size(faces,1)*3,2)
+#	f = zeros(Int, size(faces))
+#	fc = zeros(size(v,1))
+#	for i in 1:size(faces,1)
+#		face = faces[i,:]
+#		verts = vertices[face,:]
+#		j = 3*(i-1)+1
+#		f[i,:] = [j,j+1,j+2]
+#		v[j:j+2,:] .= verts
+#		fc[j:j+2] .= facecolors[i]
+#	end
+#	return v,f,fc
+#end
+#vertices = pdom.nodes[:,1:2]
+#faces = hcat(_conn...)'[:,1:3]
+#facecolors = pdom.postdata.timesteps[end].pdat[:σ_avg]
+#v,fa,fc = facecolor(vertices,faces,facecolors)
+#cm_repo_2d = mesh!(ax, v, fa, color=fc, shading=NoShading)
 
 end
 

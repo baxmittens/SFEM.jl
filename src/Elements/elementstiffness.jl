@@ -133,6 +133,39 @@ function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, matpars, dofmap
 	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, el.matpars, 𝐁s, 𝐍s, nodalU, εpls, detJs, wips, X0s, actt)
 end
 
+function elFM(fun::Function, 𝐍, X0, detJ, w::Float64, actt)
+	dVw = detJ*w
+	return transpose(NMat(𝐍))*fun(X0, actt)*dVw
+end
+
+@generated function elFM(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, fun, 𝐍s, X0s, detJs, wips, actt) where {NIPs, NNODES, DIM}
+	DIMTimesNNODES = DIM*NNODES
+	#println(typeof(wips)," ",wips)
+	body = Expr(:block)
+	for ip in 1:NIPs
+		push!(body.args, quote
+			qe += elFM(fun, 𝐍s[$ip], X0s[$ip], detJs[$ip], wips[$ip], actt)
+		end)
+	end
+	return quote
+        qe = zero(SVector{$DIMTimesNNODES,Float64})
+        $body
+        return qe
+	end
+end
+
+function elFM(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	𝐍s = shapeFuns.𝐍s
+	d𝐍s = shapeFuns.d𝐍s
+	wips = shapeFuns.wips
+	elX0 = el.nodes
+	X0s = ntuple(ip->elX0*𝐍s[ip], NIPs)
+	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
+	detJs = ntuple(ip->norm(Js[ip]), NIPs)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	return elFM(Val{NIPs}, Val{NNODES}, Val{DIM}, fun, 𝐍s, X0s, detJs, wips, actt)
+end
+
 function ipMass(𝐍, detJ, w)
 	dVw = detJ*w
 	return 𝐍*transpose(𝐍)*dVw
