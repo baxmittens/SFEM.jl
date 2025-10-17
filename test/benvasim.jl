@@ -7,7 +7,7 @@ ENV["OPENBLAS_NUM_THREADS"] = Base.Threads.nthreads()
 
 import SFEM
 import SFEM: LinearElasticity, HeatConduction
-import SFEM.Elements: Tri3, Tri6, Tri, ElementStateVars2D, MatPars
+import SFEM.Elements: Tri3, Tri6, Tri, ElementStateVars2D, MatPars, Line
 import SFEM.MeshReader: GmshMesh
 import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadstep!, tsolve!
 
@@ -47,7 +47,8 @@ function lin_func(x,xmin,ymin,xmax,ymax)
 	return a*x+b
 end
 
-funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 1 && actt < 26 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
+#funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 1 && actt < 26 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
+funT(x, matpars, actt, ts=ts) = 0.0
 funM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 matpars = MatPars(7000.0, 450.0, 1e-5, 1e-5, 0.0, 50.0, 50.0, 0.0, 2.1e11, 0.3, 200.0, funM, funT, 1)
 matpars0 = MatPars(6700.0, 500.0, 1.7e-05, 1.7e-05, 0.0, 16.0, 16.0, 0.0, 195000000000.0, 0.3, Inf, funM, funT, 0)
@@ -87,7 +88,7 @@ dofmap1 = convert(Matrix{Int}, reshape(1:ndofs1,2,:))
 ndofs2 = size(nodes,1)*1
 dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
 
-neumann_inds = findall(x->isapprox(x[1],100.0,atol=1e-5), eachrow(nodes))
+neumann_inds = findall(x->isapprox(x[2],100.0,atol=1e-5), eachrow(nodes))
 lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
 nips_neumann = 3
 neumann_els_M = Line{2,3,nips_neumann,6}[]
@@ -102,6 +103,7 @@ for el in els1
 end
 #fun_neumann_M(x, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
 
 linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, Line{2,3,nips_neumann,6}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
 heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nts, Val{1}, Nothing)
@@ -240,7 +242,9 @@ end
 
 #tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=80, colormap=:prism)
 #tch = tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)', levels=31, colormap=:RdBu)
-tch = mesh!(points, hcat(conn...)', color=postData,colormap=:RdBu, shading=false)
+cmap = cgrad(:RdBu)
+cmap_reversed = reverse(cmap)
+tch = mesh!(points, hcat(conn...)', color=postData,colormap=cmap_reversed, shading=false)
 faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
 mesh = map!(Observable{Any}(), points) do p
 	GeometryBasics.Mesh(p, faces)

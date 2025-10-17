@@ -113,7 +113,6 @@ struct MatPars
 	E::Float64
 	ν::Float64
 	σy::Float64
-	T0::Float64
 	bodyforceM::Function
 	bodyforceT::Function
 	materialID::Int
