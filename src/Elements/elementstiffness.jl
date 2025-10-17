@@ -1,6 +1,6 @@
 
 
-function response1(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     ℂ = MaterialStiffness(Val{2}, matpars)
     αT = thermal_expansivity(Val{2}, matpars)
 	return ℂ * (εtr - αT.*ΔT), εpl
@@ -17,7 +17,7 @@ using LinearAlgebra, StaticArrays
 #	end
 #end
 
-function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+function response1(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     # Materialparameter
     E,ν,σy = matpars.E, matpars.ν, matpars.σy
     G  = E / (2*(1+ν))
@@ -84,7 +84,7 @@ function ipRint(state, matpars, 𝐁, 𝐍, nodalU, εpl, detJ, w, X0, actt, ΔT
 	dVw = detJ*w
 	εtr = 𝐁*nodalU
 	σtr = response(matpars, εtr, εpl, ΔT)[1]
-	b = transpose(NMat(𝐍))*matpars.bodyforceM(X0, actt)*matpars.ϱ
+	b = transpose(NMat(𝐍))*matpars.bodyforceM(X0, matpars, actt)*matpars.ϱ
 	return transpose(𝐁)*σtr*dVw - b*dVw
 end
 

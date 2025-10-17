@@ -14,7 +14,7 @@ function ipRintT(state, matpars, grad𝐍_temp, 𝐍_temp, nodalT, nodalTm1, det
 	dVw = detJ*w
 	MΔT = 1.0/Δt*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*(nodalT-nodalTm1)*dVw
 	q = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*nodalT*dVw
-	qbar = 𝐍_temp*matpars.bodyforceT(X0, actt)*dVw
+	qbar = 𝐍_temp*matpars.bodyforceT(X0, matpars, actt)*dVw
 	return MΔT+q-qbar
 end
 

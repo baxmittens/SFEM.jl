@@ -292,7 +292,7 @@ function newtonraphson!(dom::Domain)
 	numit = 0
 	str = "\nconvergence history"
 	@info "Start Newton-Raphson iteration"
-	while normdU>1e-10 && numit < 10
+	while normdU>1e-8 && numit < 10
 		@info "Newton-Raphson iteration $(numit+1)"
 		solve!(dom)
 		normdU = norm(dom.mma.ΔU)

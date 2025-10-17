@@ -89,6 +89,7 @@ struct MatPars
 	σy::Float64
 	bodyforceM::Function
 	bodyforceT::Function
+	materialID::Int
 end
 
 struct Tri{DIM, NNODES, NIPs, DIMtimesNNodes} <: ContinuumElement{DIM, NNODES, NIPs, DIMtimesNNodes}
