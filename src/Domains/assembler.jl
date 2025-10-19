@@ -3,14 +3,12 @@ using SparseArrays
 function build_index_mapping!(dom::Domain)
     I, J, A = dom.mma.I, dom.mma.J, first(dom.mma.Kglob)
     nnz_total = length(I)
-    # baue Hilfsstruktur für schnellen Lookup: Dict[(row,col)] -> nzval_index
     lookup = Dict{Tuple{Int,Int},Int}()
     for col in 1:size(A,2)
         for p in A.colptr[col]:(A.colptr[col+1]-1)
             lookup[(A.rowval[p], col)] = p
         end
     end
-    # dann Mapping aufbauen
     for k in 1:nnz_total
         dom.mma.idxmap[k] = lookup[(I[k], J[k])]
     end
@@ -53,7 +51,7 @@ function assemble!(mma::DomainMalloc, dofmap::Matrix{Int}, els::Vector{T1}, els_
         @inbounds F[eldofs] .-= Rint
     end
     for i in 1:length(els_neumann)
-        @inbounds el = els[i]
+        @inbounds el = els_neumann[i]
         eldofs = _dofmap(Val{DOFMAPDIM1}, Val{M}, dofmap, el.inds)
         @inbounds F[eldofs] .+= elFN[i]
     end
@@ -74,9 +72,6 @@ function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap::Matrix{Int
         k = (i-1)*NN + 1
         @simd for a in 1:N
             @inbounds for b in 1:N
-                #I[k] = eldofs[a]
-                #J[k] = eldofs[b]
-                #V[k] = Ke[a, b]
                 Kglob.nzval[mma.idxmap[k]] += Ke[a, b]
                 k += 1
             end
@@ -84,21 +79,21 @@ function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap::Matrix{Int
         @inbounds F[eldofs] .-= Rint
     end
     for i in 1:length(els_neumann)
-        @inbounds el = els[i]
+        @inbounds el = els_neumann[i]
         eldofs = _dofmap(Val{DOFMAPDIM1}, Val{M}, dofmap, el.inds)
         @inbounds F[eldofs] .+= elFN[i]
     end
     return nothing
 end
 
-function assemble!(dom::Domain{Tuple{ProcessDomain{P,T,E,DMD1}}}) where {P,T,E,DMD1}
+function assemble!(dom::Domain{Tuple{ProcessDomain{P,T1,T2,E1,E2,DMD1}}}) where {P,T1,T2,E1,E2,DMD1}
     pdom = first(dom.processes)
     if isempty(dom.mma.Kglob)
-        assemble!(dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.Fn, Val{DMD1})
+        assemble!(dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.elFn, Val{DMD1})
         push!(dom.mma.Kglob,SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr))
         build_index_mapping!(dom)
     else
-        assemble!(first(dom.mma.Kglob), dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.Fn, Val{DMD1})
+        assemble!(first(dom.mma.Kglob), dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.elFn, Val{DMD1})
     end
     return first(dom.mma.Kglob)
 end
@@ -132,8 +127,6 @@ function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}
         @inbounds Ke = elMats[i][1] 
         @inbounds Rint = elMats[i][2]
         eldofs = _dofmap(Val{2}, Val{N}, dofmap1, dofmap2, el1.inds, el2.inds)
-        #println(eldofs)
-        #error()     
         k = (i-1)*NN + 1
         @simd for a in 1:N
             @inbounds for b in 1:N
@@ -157,16 +150,7 @@ function assemble!(mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}
     end
     return nothing
 end
-#    for i in 1:length(els_neumann1)
-#        @inbounds el = els_neumann1[i]
-#        eldofs = dofmap1[SVector{2,Int}(1,2),el.inds][:]
-#        @inbounds F[eldofs] .+= elFN1[i]
-#    end
-#    for i in 1:length(els_neumann2)
-#        @inbounds el = els_neumann2[i]
-#        eldofs = dofmap2[1,el.inds]
-#        @inbounds F[eldofs] .+= elFN2[i]
-#    end
+
 function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{Int}, dofmap2::Matrix{Int}, els1::Vector{T1}, els2::Vector{T2}, els_neumann1::Vector{T3}, els_neumann2::Vector{T4}, elMats::Vector{Tuple{SMatrix{N, N, Float64, NN}, SVector{N, Float64}}}, elFN1::Vector{SVector{M1,Float64}}, elFN2::Vector{SVector{M2,Float64}}) where {N,NN,M1,M2,T1<:Tri,T2<:Tri,T3,T4}
     Kglob.nzval .= 0.0
     I, J, V, F = mma.I, mma.J, mma.V, mma.F
@@ -179,14 +163,9 @@ function assemble!(Kglob::SparseMatrixCSC, mma::DomainMalloc, dofmap1::Matrix{In
         @inbounds Ke = elMats[i][1] 
         @inbounds Rint = elMats[i][2]
         eldofs = _dofmap(Val{2}, Val{N}, dofmap1, dofmap2, el1.inds, el2.inds)
-        #println(eldofs)
-        #error()     
         k = (i-1)*NN + 1
         @simd for a in 1:N
             @inbounds for b in 1:N
-                #I[k] = eldofs[a]
-                #J[k] = eldofs[b]
-                #V[k] = Ke[a, b]
                 Kglob.nzval[mma.idxmap[k]] += Ke[a, b]
                 k += 1
             end

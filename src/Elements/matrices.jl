@@ -19,10 +19,29 @@ function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {
         gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
     ]
 end
+function Blin0(::Type{Tri{2,10,NIPs,20}}, gradN::SMatrix{10,2,Float64,20}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0           gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0   gradN[7,1]  0.0   gradN[8,1]  0.0        gradN[9,1]  0.0   gradN[10,1]  0.0   
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]    0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]    0.0       gradN[7,2]    0.0    gradN[8,2] 0.0   gradN[9,2] 0.0    gradN[10,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]    gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]    gradN[7,2]  gradN[7,1]    gradN[8,2]  gradN[8,1] gradN[9,2]  gradN[9,1] gradN[10,2]  gradN[10,1]
+    ]
+end
+function NMat(N::SVector{2,Float64})
+    return @SMatrix [
+        N[1]  0.0   N[2]  0.0
+        0.0   N[1]  0.0   N[2]
+    ]
+end
 function NMat(N::SVector{3,Float64})
     return @SMatrix [
         N[1]  0.0   N[2]  0.0   N[3]    0.0
         0.0   N[1]  0.0   N[2]  0.0     N[3]
+    ]
+end
+function NMat(N::SVector{4,Float64})
+    return @SMatrix [
+        N[1]  0.0   N[2]  0.0   N[3]    0.0   N[4]  0.0
+        0.0   N[1]  0.0   N[2]  0.0     N[3]  0.0   N[4]
     ]
 end
 function NMat(N::SVector{6,Float64})
@@ -31,7 +50,12 @@ function NMat(N::SVector{6,Float64})
         0.0   N[1]  0.0   N[2]  0.0     N[3]    0.0   N[4]  0.0   N[5]  0.0     N[6]
     ]
 end
-
+function NMat(N::SVector{10,Float64})
+    return @SMatrix [
+        N[1]  0.0   N[2]  0.0   N[3]    0.0     N[4]  0.0   N[5]  0.0   N[6]    0.0   N[7]    0.0     N[8]  0.0   N[9]  0.0   N[10]    0.0 
+        0.0   N[1]  0.0   N[2]  0.0     N[3]    0.0   N[4]  0.0   N[5]  0.0     N[6]  0.0     N[7]    0.0   N[8]  0.0   N[9]  0.0     N[10]
+    ]
+end
 
 
 function MaterialStiffness(::Type{Val{2}}, matpars::MatPars)

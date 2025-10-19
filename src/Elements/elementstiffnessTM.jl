@@ -13,6 +13,9 @@ end
 function combine(Kuu::SMatrix{12,12,T,144}, KuT::SMatrix{12,3,T,36}, KTT::SMatrix{3,3,T,9}) where {T}
     return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{3,12,Float64,36}), KTT))
 end
+function combine(Kuu::SMatrix{20,20,T,400}, KuT::SMatrix{20,10,T,200}, KTT::SMatrix{10,10,T,100}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{10,20,Float64,200}), KTT))
+end
 
 function ipStiffnessTM(state, matpars, 𝐁, 𝐍_temp, grad𝐍_temp, nodalU, nodalT, εpl, detJ, w, Δt)
 	𝐁tr = transpose(𝐁)

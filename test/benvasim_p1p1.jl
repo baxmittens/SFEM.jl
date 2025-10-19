@@ -16,18 +16,15 @@ using LinearAlgebra
 using VTUFileHandler
 
 #meshfilepath = "../models/2d/beam_medium_tri6.msh"
-meshfilepath = "../models/2d/model2.msh"
-mesh = GmshMesh(meshfilepath);
+#meshfilepath = "../models/2d/model2.msh"
+#mesh = GmshMesh(meshfilepath);
 #mesh.nodes nnodes×3 Matrix{Float64}
 #connectivity Vector{Vector{Int64}
 
 meshfilepath = "../models/2d/model3.vtu"
-#meshfilepath = "../models/2d/model1.vtu"
 mesh = VTUFile(meshfilepath);
 _matids = mesh["MaterialIDs"]
-#matids = mesh["MaterialIDs"]
 _connectivity = reshape(mesh["connectivity"],9,:).+1
-#connectivity = collect(eachcol(_connectivity))
 nodes = collect(reshape(mesh["Points"],3,:)')
 nodes_lin = Vector{Vector{Float64}}()
 connectivity = Vector{Vector{Int}}()
@@ -70,7 +67,8 @@ for (i,conn) in enumerate(eachcol(_connectivity))
 	push!(connectivity_lin, trilinb)
 end
 nodes_lin = collect(transpose(hcat(nodes_lin...)))
-
+nodes = nodes_lin
+connectivity = connectivity_lin
 
 nips = 7
 ts = collect(range(0,63115200000.0,10))
@@ -89,11 +87,13 @@ funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 1 && actt < 26 ?
 #funT(x, matpars, actt, ts=ts) = 0.0
 funM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 matpars0 = MatPars(6700.0, 500.0, 1.7e-05, 1.7e-05, 0.0, 16.0, 16.0, 0.0, 195_000_000_000.0, 0.3, Inf, funM, funT, 0)
-matpars1 = MatPars(1575.0, 1090.0,  2.5e-5, 2.5e-5, 0.0, 1.17, 1.17, 0.0, 10_000_000_000.0, 0.3  , Inf, funM, funT, 1)
-matpars2 = MatPars(2495.0, 1060.0,  2e-5, 2e-5, 0.0, 1.84, 1.84, 0.0, 50_000_000_000.0, 0.3, Inf, funM, funT, 2)
+matpars1 = MatPars(1575.0, 1090.0,  2.5e-5, 2.5e-5, 0.0, 1.17, 1.17, 0.0, 100_000_000.0, 0.1, Inf, funM, funT, 1)
+matpars2 = MatPars(2495.0, 1060.0,  2e-5, 2e-5, 0.0, 1.84, 1.84, 0.0, 5_000_000_000.0, 0.3, Inf, funM, funT, 2)
 matparsdict = Dict(0=>matpars0, 1=>matpars1, 2=>matpars2)
-els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
-els2 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+#els1 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+#els2 = Tri{2,6,nips,12}[Tri6(SMatrix{2,6,Float64,12}(nodes[elinds,1:2]'), SVector{6,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+els1 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+els2 = Tri{2,3,nips,6}[Tri3(SMatrix{2,3,Float64,6}(nodes[elinds,1:2]'), SVector{3,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
 
 function dirichletM(ΔU, U, nodes, dofmap, actt)
 	
@@ -106,8 +106,8 @@ function dirichletM(ΔU, U, nodes, dofmap, actt)
 	right_bc_x = dofmap[1,inds_right]
 	bottom_bc_y = dofmap[2,inds_bottom]
 
-	return vcat(bottom_bc_y, left_bc_x, right_bc_x)
-	#return vcat(bottom_bc_y, left_bc_x)
+	#return vcat(bottom_bc_y, left_bc_x, right_bc_x)
+	return vcat(bottom_bc_y, left_bc_x)
 end
 
 function dirichletT(ΔU, U, nodes, dofmap, actt)
@@ -126,25 +126,28 @@ ndofs2 = size(nodes,1)*1
 dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
 
 neumann_inds = findall(x->isapprox(x[2],100.0,atol=1e-5), eachrow(nodes))
-lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
+#lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
+lines = [SVector{2,Int}(1,2), SVector{2,Int}(2,3), SVector{2,Int}(3,1)]
 nips_neumann = 3
-neumann_els_M = Line{2,3,nips_neumann,6}[]
-neumann_els_T = Line{2,3,nips_neumann,6}[]
+#neumann_els_M = Line{2,3,nips_neumann,6}[]
+neumann_els_M = Line{2,2,nips_neumann,4}[]
+#neumann_els_T = Line{2,3,nips_neumann,6}[]
 for el in els1
 	for line in lines
 		inds = el.inds[line]
 		if all(map(x->x ∈ neumann_inds, inds))
-			push!(neumann_els_M, Line(SMatrix{2,3,Float64,6}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
+			#push!(neumann_els_M, Line(SMatrix{2,3,Float64,6}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
+			push!(neumann_els_M, Line(SMatrix{2,2,Float64,4}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
 		end
 	end
 end
 #fun_neumann_M(x, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
-fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
-#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
+#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
 
-linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, Line{2,3,nips_neumann,6}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
+linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, Line{2,2,nips_neumann,4}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
 heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nts, Val{1}, Nothing)
-dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichletT=dirichletT)
+dom = Domain((linelasticity,heatconduction,), ts, dirichletM=dirichletM, dirichletT=dirichletT)
 
 @time tsolve!(dom)
 
@@ -219,7 +222,7 @@ valDict = Dict{Symbol, Matrix{Float64}}()
 xPt = SVector{2,Float64}(23.0,50.0)
 pdom = dom.processes[1];
 xStart = SVector{2,Float64}(0.0,0.0)
-xEnd = SVector{2,Float64}(25.0,25.0)
+xEnd = SVector{2,Float64}(24.0,0.0)
 nsamplepoints = 500
 xPts, pts = sampleResult!(valDict, pdom, xStart, xEnd, nsamplepoints)
 

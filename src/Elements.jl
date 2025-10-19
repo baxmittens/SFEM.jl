@@ -18,50 +18,88 @@ include("./Elements/ShapeFunctions.jl")
 struct Line2Ref <: LineRefElement
 	nodes::SMatrix{1,2,Float64,2}
 	shapeFuns::Tuple
+	dshapeFuns::Tuple
 	pOrder::Int
 	function Line2Ref()
 		pOrder = 1
 		nodes = SMatrix{1,2,Float64,2}(-1.0, 1.0)
 		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
-		return new(nodes, shapeFuns, pOrder)
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 1), 2)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
 	end
 end
 
 struct Line3Ref <: LineRefElement
 	nodes::SMatrix{1,3,Float64,3}
 	shapeFuns::Tuple
+	dshapeFuns::Tuple
 	pOrder::Int
 	function Line3Ref()
 		pOrder = 2
 		nodes = SMatrix{1,3,Float64,3}(-1.0, 0.0, 1.0)
 		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
-		return new(nodes, shapeFuns, pOrder)
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 1), 3)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
+	end
+end
+
+struct Line4Ref <: LineRefElement
+	nodes::SMatrix{1,4,Float64,4}
+	shapeFuns::Tuple
+	dshapeFuns::Tuple
+	pOrder::Int
+	function Line4Ref()
+		pOrder = 3
+		nodes = SMatrix{1,4,Float64,4}(-1.0, -1/3, 1/3, 1.0)
+		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 1), 4)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
 	end
 end
 
 struct Tri3Ref <: TriRefElement
 	nodes::SMatrix{2,3,Float64,6}
 	shapeFuns::Tuple
+	dshapeFuns::Tuple
 	pOrder::Int
 	function Tri3Ref()
 		pOrder = 1
 		nodes = SMatrix{2,3,Float64,6}(0.,0.,1.,0.,0.,1.)
 		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
-		return new(nodes, shapeFuns, pOrder)
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 2), 3)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
 	end
 end
 
 struct Tri6Ref <: TriRefElement
 	nodes::SMatrix{2,6,Float64,12}
 	shapeFuns::Tuple
+	dshapeFuns::Tuple
 	pOrder::Int
 	function Tri6Ref()
 		pOrder = 2
 		nodes = SMatrix{2,6,Float64,12}(0.,0.,1.,0.,0.,1.,.5,0.,.5,.5,.0,.5)
 		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
-		return new(nodes, shapeFuns, pOrder)
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 2), 6)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
 	end
 end
+
+
+struct Tri10Ref <: TriRefElement
+	nodes::SMatrix{2,10,Float64,20}
+	shapeFuns::Tuple
+	dshapeFuns::Tuple
+	pOrder::Int
+	function Tri10Ref()
+		pOrder = 3
+		nodes = SMatrix{2,10,Float64,20}(0,0,1,0,0,1,1/3,0,2/3,0,2/3,1/3,1/3,2/3,0,2/3,0,1/3,1/3,1/3)
+		shapeFuns = shape_functions(TriRefElement, nodes, Val{pOrder})
+		dshapeFuns = ntuple(i_sf->ntuple(dir->DensePolynomials.diff(shapeFuns[i_sf], dir), 2), 10)
+		return new(nodes, shapeFuns, dshapeFuns, pOrder)
+	end
+end
+
 dim(el::C) where {C<:GenericRefElement} = size(el.nodes,1)
 nnodes(el::C) where {C<:GenericRefElement} = size(el.nodes,2)
 
@@ -138,8 +176,10 @@ nnodes(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}) where {DIM, NNODES, NIPs, DIM
 σ_avg(el::C, actt::Int) where {C<:GenericElement} = σ_avg(el.state, actt)
 RefEl(::Type{Tri{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri3Ref()
 RefEl(::Type{Tri{DIM, 6, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri6Ref()
+RefEl(::Type{Tri{DIM, 10, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Tri10Ref()
 RefEl(::Type{Line{DIM, 2, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Line2Ref()
 RefEl(::Type{Line{DIM, 3, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Line3Ref()
+RefEl(::Type{Line{DIM, 4, NIPs, DIMtimesNNodes}}) where {DIM, NIPs, DIMtimesNNodes} = Line4Ref()
 RefEl(::Type{Nothing}) = Line2Ref()
 
 function Line(nodes::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, inds, ::Type{Val{NIPs}}) where {DIM,NNODES,DIMtimesNNodes,NIPs}
@@ -149,9 +189,11 @@ end
 function Tri3(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs} 
 	return Tri{2,3,NIPs,6}(nodes, inds, state, matpars)
 end
-
 function Tri6(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs}
 	return Tri{2,6,NIPs,12}(nodes, inds, state, matpars)
+end
+function Tri10(nodes, inds, state::ElementStateVars2D, matpars, ::Type{Val{NIPs}}) where {NIPs}
+	return Tri{2,10,NIPs,20}(nodes, inds, state, matpars)
 end
 
 function saveHistory!(el::C, actt) where {C<:GenericElement}
@@ -185,6 +227,8 @@ function initStates!(::Type{HeatConduction}, el::Tri{DIM, NNODES, NIPs, DIMtimes
 	foreach(ipstate->initStates!(LinearElasticity, ipstate), el.state.state)
 	return nothing
 end
+
+include("./Elements/globaltolocal.jl")
 
 end #module Elements
 

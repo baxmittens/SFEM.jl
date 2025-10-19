@@ -1,8 +1,11 @@
 //-----------------------------------------------------
 // Punkte der äußeren Rechteck-Domäne
 //-----------------------------------------------------
-lc0 = 10.0;
-lc1 = 0.1;
+Mesh.SaveAll = 0; 
+//Mesh.MshFileVersion = 2.2;
+lc0 = 5;
+lc1 = 0.25;
+lc2 = 0.075;
 Point(1) = {-25, -100, 0, lc0};
 Point(2) = { 25, -100, 0, lc0};
 Point(3) = { 25,  100, 0, lc0};
@@ -32,15 +35,15 @@ Circle(6) = {7, 5, 8};
 Circle(7) = {8, 5, 9};
 Circle(8) = {9, 5, 6};
 Line Loop(2) = {5, 6, 7, 8};
-Plane Surface(2) = {2};   // Innerer Kreis = eigene Fläche
+Plane Surface(1) = {2};   // Innerer Kreis = eigene Fläche
 
 //-----------------------------------------------------
 // Äußerer Kreis (r = 3)
 //-----------------------------------------------------
-Point(10) = { 3, 0, 0, lc1};
-Point(11) = { 0, 3, 0, lc1};
-Point(12) = {-3, 0, 0, lc1};
-Point(13) = { 0,-3, 0, lc1};
+Point(10) = { 3, 0, 0, lc2};
+Point(11) = { 0, 3, 0, lc2};
+Point(12) = {-3, 0, 0, lc2};
+Point(13) = { 0,-3, 0, lc2};
 
 Circle(9)  = {10, 5, 11};
 Circle(10) = {11, 5, 12};
@@ -51,24 +54,23 @@ Line Loop(3) = {9, 10, 11, 12};
 //-----------------------------------------------------
 // Ringfläche zwischen r=2 und r=3
 //-----------------------------------------------------
-Plane Surface(3) = {3, 2}; // Außenkreis minus Innenkreis
+Plane Surface(2) = {3, 2}; // Außenkreis minus Innenkreis
 
 //-----------------------------------------------------
 // Äußere Domäne (Rechteck minus äußerer Kreis)
 //-----------------------------------------------------
-Plane Surface(4) = {1, 3};
+Plane Surface(3) = {1, 3};
 
 //-----------------------------------------------------
 // Physikalische Gruppen (Materialzonen)
 //-----------------------------------------------------
-Physical Surface("InnerCircle") = {2};
-Physical Surface("Ring")        = {3};
-Physical Surface("OuterDomain") = {4};
+Physical Surface("InnerCircle") = {1};
+Physical Surface("Ring")        = {2};
+Physical Surface("OuterDomain") = {3};
 
 //-----------------------------------------------------
 // Mesh-Einstellungen
 //-----------------------------------------------------
-Mesh.CharacteristicLengthMax = lc0;
-Mesh.CharacteristicLengthMin = lc1;
-Mesh.SaveAll = 0;
+//Mesh.CharacteristicLengthMax = lc0;
+//Mesh.CharacteristicLengthMin = lc1;
 Mesh 2;

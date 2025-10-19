@@ -2,130 +2,168 @@ using GLMakie
 using GeometryBasics
 using LinearAlgebra
 
-f = Figure(size=(1000,600));
-mainview = f[1,1] = GridLayout()
-controlview = f[2,1] = GridLayout()
-ax = Axis(f[1,1], autolimitaspect = 1)
-timeslider = Slider(controlview[1,2], range = ts, startvalue = first(ts), update_while_dragging=false)
-timeslidertext = map!(Observable{Any}(), timeslider.value) do val
-	return "t=$val"
-end
-Label(controlview[1,1], text=timeslidertext)
-fieldview = controlview[2,2] = GridLayout()
-itemmenu = Menu(fieldview[1,1], options=["U", "σ", "εpl"])
-fieldmenu = Menu(fieldview[1,2], options=["xx", "yy", "xy", "eq"])
-Label(fieldview[1,3], text="show mesh:")
-togglemesh = Toggle(fieldview[1,4], active = true)
-
-
-_conn = dom.mesh.connectivity
-
-if length(_conn[1])>3
-	conn = Vector{Vector{Int64}}(undef, 4*length(_conn))
-	for i = 1:length(_conn)
-		ii = 4*(i-1)+1
-		conn[ii] = _conn[i][[1,2,4]]
-		conn[ii+1] = _conn[i][[4,2,5]]
-		conn[ii+2] = _conn[i][[6,5,3]]
-		conn[ii+3] = _conn[i][[4,5,6]]
-	end
-else
-	conn = _conn
-end
-
-X = dom.mesh.nodes[:,1]
-Y = dom.mesh.nodes[:,2]
-
-oU = map!(Observable{Any}(), timeslider.value) do val
-	ti = findfirst(x->x==val, dom.ts)
-	return dom.postdata.postdata[ti].U
-end
-Xd = map!(Observable{Any}(), oU) do U
-	Ux = U[dom.dofmap[1,:]]
-	X .+ Ux
-end
-Yd = map!(Observable{Any}(), oU) do U
-	Uy = U[dom.dofmap[2,:]]
-	Y .+ Uy
-end
-points = map!(Observable{Any}(), oU) do U
-	Ux = U[dom.dofmap[1,:]]
-	Uy = U[dom.dofmap[2,:]]
-	Xd = X .+ Ux
-	Yd = Y .+ Uy
-	points = Point2f.(Xd, Yd)
-end
-Ux = map!(Observable{Any}(), oU) do U
-	U[dom.dofmap[1,:]]
-end
-Uy = map!(Observable{Any}(), oU) do U
-	U[dom.dofmap[2,:]]
-end
-on(points) do points
-	xx = map(x->x[1], points)
-	yy = map(x->x[2], points)
-	minx,maxx = minimum(xx), maximum(xx)
-	miny,maxy = minimum(yy), maximum(yy)
-	distx = (maxx-minx)/10.0
-	disty = (maxy-miny)/10.0
-	xlims!(ax, [minx-distx,maxx+distx])
-	ylims!(ax, [miny-disty,maxy+disty])
-end
-
-postData = map!(Observable{Any}(), itemmenu.selection, fieldmenu.selection, timeslider.value) do item,field,val
-	ti = findfirst(x->x==val, dom.ts)
-	if item == "U"
-		if field == "xx"
-			dom.postdata.postdata[ti].U[dom.dofmap[1,:]].+eps()
-		elseif field == "yy"
-			dom.postdata.postdata[ti].U[dom.dofmap[2,:]].+eps()
-		else
-			zeros(length(dom.postdata.postdata[ti].U[dom.dofmap[2,:]])).+eps()
+using NearestNeighbors
+function elementCoords(xPt::SVector{N,Float64}, pdom, kdtree_faces) where {N}
+	ind_face,dist_face = knn(kdtree_faces, xPt, 10)
+	shapeFuns,dshapeFuns = pdom.refel.shapeFuns,pdom.refel.dshapeFuns
+	for ind in ind_face
+		success, ξ = globalToLocal(xPt, pdom.els[ind].nodes, shapeFuns, dshapeFuns)
+		if success
+			return success, ind, ξ 
 		end
-	elseif item == "σ"
-		if field == "xx"
-			dom.postdata.postdata[ti].σ[:,1].+eps()
-		elseif field == "yy"
-			dom.postdata.postdata[ti].σ[:,2].+eps()
-		elseif field == "xy"
-			dom.postdata.postdata[ti].σ[:,3].+eps()
-		else
-			norm.(vcat(dom.postdata.postdata[ti].σ[:,1], dom.postdata.postdata[ti].σ[:,3], dom.postdata.postdata[ti].σ[:,2], dom.postdata.postdata[ti].σ[:,3])).+eps()
+	end
+	return false, -1, -ones(SVector{N,Float64})
+end
+
+function sampleLine2D(xStart, xEnd, nsamplepoints)
+	xlength = norm(xEnd-xStart)
+	xnormal = (xEnd-xStart)/xlength
+	xdist = xlength/(nsamplepoints-1)
+	xPts = Vector{SVector{2,Float64}}(undef, nsamplepoints)
+	pts = Vector{Float64}(undef, nsamplepoints)
+	xPts[1] = xStart
+	pts[1] =  0.0
+	for i = 2:nsamplepoints
+		xPts[i] = xStart + (i-1)*xnormal*xdist
+		pts[i] = (i-1)*xdist
+	end
+	return xPts, pts
+end
+
+import DensePolynomials: evaluate
+function sampleResult!(valDict, pdom::ProcessDomain{P, Tri{N,M,NIPs,NM}}, xStart, xEnd, nsamplepoints) where {P,N,M,NIPs,NM}
+	connectivity = pdom.connectivity
+	ntimessteps = length(pdom.postdata.timesteps)
+	nodes = pdom.nodes
+	shapeFuns,dshapeFuns = pdom.refel.shapeFuns,pdom.refel.dshapeFuns
+	kdtree_faces = KDTree(hcat(vcat(map(face->sum(map(faceind->nodes[faceind,:], face[1:3]),dims=1)./3, connectivity)...)...))
+	xPts, pts = sampleLine2D(xStart, xEnd, nsamplepoints)
+	elCoords = Vector{Tuple{Int, SVector{2,Float64}}}(undef, nsamplepoints)
+	for (i,xPt) in enumerate(xPts)
+		success, elind, ξ = elementCoords(xPt, pdom, kdtree_faces)
+		@assert success "$xPt"
+		elCoords[i] = elind,ξ
+	end
+	pdatkeys = collect(keys(pdom.postdata.timesteps[1].pdat))
+	pdatkeysizes = map(k->size(pdom.postdata.timesteps[1].pdat[k],2), pdatkeys)
+	for (k,sizek) in zip(pdatkeys,pdatkeysizes)
+		for r in 1:sizek
+			valvec = Matrix{Float64}(undef, ntimessteps,nsamplepoints)
+			for (i,(elind,ξ)) in enumerate(elCoords)
+				for ti in 1:ntimessteps
+					if occursin("_avg", string(k))
+						elVals = pdom.postdata.timesteps[ti].pdat[k][elind,r]
+						valvec[ti,i] = elVals
+					else
+						elVals = pdom.postdata.timesteps[ti].pdat[k][pdom.els[elind].inds,r]
+						Ne = SVector{M,Float64}(ntuple(i->evaluate(shapeFuns[i], ξ), M))
+						valvec[ti,i] = transpose(elVals)*Ne
+					end
+				end
+			end
+			valDict[Symbol(string(k)*"_$r")] = valvec
+		end
+	end
+	return xPts, pts
+end
+
+function plotLine!(gridlayout, valkeys, timeslider, dom, xStart, xEnd, nsamplepoints=50)
+	valDict = Dict{Symbol, Matrix{Float64}}()
+	xPts, pts = sampleResult!(valDict, dom.processes[1], xStart, xEnd, nsamplepoints)
+	for pdom in dom.processes[2:end]
+		xPts, pts = sampleResult!(valDict, pdom, xStart, xEnd, nsamplepoints)
+	end
+	for (i,valkey) in enumerate(sort(collect(keys(valDict))∩valkeys))
+		ax = Axis(gridlayout[i,1])
+		vals = map!(Observable{Any}(), timeslider.value) do ts
+			vals = valDict[valkey][ts,:]
+			minval = minimum(valDict[valkey])
+			maxval = maximum(valDict[valkey])
+			diffval = maxval-minval
+			ylims!(ax, (minval-0.05*diffval, maxval+0.05*diffval))
+			return vals
+		end
+		lines!(ax, pts, vals, label=string(valkey))
+		axislegend()
+	end
+	return nothing
+end
+
+function getXY(pdom,  timeslider, dispslider)
+	X = map!(Observable{Any}(), timeslider.value, dispslider.value) do val,val2
+		X = pdom.nodes[:,1];
+		U = pdom.postdata.timesteps[val].pdat[:U][:,1].*val2
+		return X .+ U
+	end
+	Y = map!(Observable{Any}(), timeslider.value, dispslider.value) do val,val2
+		Y = pdom.nodes[:,2];
+		U = pdom.postdata.timesteps[val].pdat[:U][:,1].*val2
+		return Y .+ U
+	end
+	return X,Y
+end
+
+function getPoints2f(pdom,  timeslider, dispslider)
+	points = map!(Observable{Any}(), timeslider.value, dispslider.value) do val,val2
+		X = pdom.nodes[:,1];
+		U1 = pdom.postdata.timesteps[val].pdat[:U][:,1].*val2
+		Y = pdom.nodes[:,2];
+		U2 = pdom.postdata.timesteps[val].pdat[:U][:,2].*val2
+		return GeometryBasics.Point2f.(X .+ U1, Y .+ U2)	
+	end
+	return points
+end
+
+function plotConnectivity(pdom)
+	_conn = dom.processes[1].connectivity;
+	if length(_conn[1])==6
+		conn = Vector{Vector{Int64}}(undef, 4*length(_conn))
+		for i = 1:length(_conn)
+			ii = 4*(i-1)+1
+			conn[ii] = _conn[i][[1,4,6]]
+			conn[ii+1] = _conn[i][[4,2,5]]
+			conn[ii+2] = _conn[i][[6,5,3]]
+			conn[ii+3] = _conn[i][[4,5,6]]
+		end
+	elseif length(_conn[1])==10
+		conn = Vector{Vector{Int64}}(undef, 9*length(_conn))
+		for i = 1:length(_conn)
+			ii = 9*(i-1)+1
+			conn[ii] = _conn[i][[1,4,9]]
+			conn[ii+1] = _conn[i][[4,5,10]]
+			conn[ii+2] = _conn[i][[5,2,6]]
+			conn[ii+3] = _conn[i][[4,10,9]]
+			conn[ii+4] = _conn[i][[5,6,10]]
+			conn[ii+5] = _conn[i][[9,10,8]]
+			conn[ii+6] = _conn[i][[10,6,7]]
+			conn[ii+7] = _conn[i][[10,7,8]]
+			conn[ii+8] = _conn[i][[8,7,3]]
 		end
 	else
-		if field == "xx"
-			abs.(dom.postdata.postdata[ti].εpl[:,1]).+eps()
-		elseif field == "yy"
-			abs.(dom.postdata.postdata[ti].εpl[:,2]).+eps()
-		elseif field == "xy"
-			abs.(dom.postdata.postdata[ti].εpl[:,3]).+eps()
-		else
-			norm.(vcat(dom.postdata.postdata[ti].εpl[:,1], dom.postdata.postdata[ti].εpl[:,3]./2.0, dom.postdata.postdata[ti].εpl[:,2], dom.postdata.postdata[ti].εpl[:,3]./2.0)).+eps()
-		end
+		conn = _conn
 	end
-	
+	return conn
 end
 
-postData_limits = map!(Observable{Any}(), postData) do u
-	lims = minimum(u),maximum(u)
-	if abs(lims[2]-lims[1]) < 1e-6
-		return -1.0,1.0
+function _getfield(x,ind)
+	if size(x,2) >= ind
+		return x[:,ind]
 	else
-		return lims
+		return similar(x[:,1])
 	end
 end
 
-
-
-tricontourf!(ax, Xd, Yd, postData, triangulation = hcat(conn...)',levels=40)
-
-faces = [GeometryBasics.TriangleFace(conn[j][1], conn[j][2], conn[j][3]) for j = 1:length(conn)]
-mesh = map!(Observable{Any}(), points) do p
-	GeometryBasics.Mesh(p, faces)
+function plotField!(gridlayout, pdom, fieldname::Symbol, points, conn, timeslider, fieldmenu, colormap=reverse(cgrad(:RdBu)))
+	compdict = Dict("_1/xx"=>x->_getfield(x,1), "_2/yy"=>x->_getfield(x,2), "_3/xy"=>x->_getfield(x,3), "norm"=>x->map(norm,eachrow(x)))
+	postData = map!(Observable{Any}(), fieldmenu.selection, timeslider.value) do field,ti
+		return compdict[field](pdom.postdata.timesteps[ti].pdat[fieldname])
+	end
+	ax = Axis(gridlayout[1,1], autolimitaspect = 1, title=string(fieldname))
+	tch = mesh!(ax, points, hcat(conn...)', color=postData, colormap=colormap, shading=false)
+	Colorbar(gridlayout[1,2], tch)
+	return ax
 end
-wireframe!(ax, mesh, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
-Colorbar(mainview[1,2], limits=postData_limits)
-display(f)
+
 function facecolor(vertices,faces,facecolors)
 	v = zeros(size(faces,1)*3,2)
 	f = zeros(Int, size(faces))
@@ -140,8 +178,7 @@ function facecolor(vertices,faces,facecolors)
 	end
 	return v,f,fc
 end
-vertices = dom.mesh.nodes[:,1:2]
-faces = hcat(conn...)'
-facecolors = dom.postdata.postdata[end].σ_avg
-v,fa,fc = facecolor(vertices,faces,facecolors)
-cm_repo_2d = mesh!(ax, v, fa, color=fc, shading=NoShading)
+#vertices = pdom.nodes[:,1:2]
+#faces = hcat(_conn...)'[:,1:3]
+#facecolors = pdom.postdata.timesteps[end].pdat[:σ_avg][:,1]
+#v,fa,fc = facecolor(vertices,faces,facecolors)

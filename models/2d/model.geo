@@ -46,10 +46,4 @@ Physical Surface("Canister", 0) = {3};
 Physical Surface("Backfill", 1) = {backfill[0]};
 Physical Surface("Domain",   2) = {outerdomain[0]};
 
-
-
-// Verfeinerung an den Kreisrändern:
-Characteristic Length{ PointsOf{ Surface{3}; } } = lc_outer;
-Characteristic Length{ PointsOf{ Surface{backfill[0]}; } } = lc_inner;
-
 Mesh 2;

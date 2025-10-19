@@ -7,7 +7,7 @@ using LinearAlgebra
 using Printf
 import ..MeshReader: GmshMesh
 import ..Elements: GenericRefElement, GenericElement, EvaluatedShapeFunctions, dim, elStiffness, elStiffnessTM, elStiffnessT, saveHistory!, 
-	Tri, Tri3, Tri6, elMass, elPost, elPostT, updateTrialStates!, initStates!, σ_avg, RefEl, flatten_tuple, _NIPs, elFM, elFT
+	Tri, Tri3, Tri6, Tri10, elMass, elPost, elPostT, updateTrialStates!, initStates!, σ_avg, RefEl, flatten_tuple, _NIPs, elFM, elFT
 import ..IntegrationRules: gaussSimplex
 import ...SFEM: Process, LinearElasticity, HeatConduction
 
@@ -168,14 +168,16 @@ end
 function integrate!(::Type{LinearElasticity}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, Uprev, actt, Δt) where {T, ENNODES, ENNODESSQ}
 	@threads for i in eachindex(els)
     	el = els[i]
-    	elMats[i] = elStiffness(el, dofmap, U, shapeFuns, actt)
+    	matpars = el.matpars
+    	elMats[i] = elStiffness(el, matpars, dofmap, U, shapeFuns, actt)
 	end
 	return nothing
 end
 function integrate!(::Type{HeatConduction}, els::Vector{T}, elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}, dofmap, shapeFuns, U, Uprev, actt, Δt) where {T, ENNODES, ENNODESSQ}
 	@threads for i in eachindex(els)
     	el = els[i]
-    	elMats[i] = elStiffnessT(el, dofmap, U, Uprev, shapeFuns, actt, Δt)
+    	matpars = el.matpars
+    	elMats[i] = elStiffnessT(el, matpars, dofmap, U, Uprev, shapeFuns, actt, Δt)
 	end
 	return nothing
 end
@@ -188,7 +190,7 @@ function integrate!(dom::Domain{Tuple{PD}}) where {PD}
 	Δt = dom.actt > 1 ? dom.timesteps[dom.actt]-dom.timesteps[dom.actt-1] : 1.0
 	pdom = dom.processes[1]
 	integrate!(dom.mma.elMats, pdom, dom.mma.U, dom.mma.Uprev, dom.actt, Δt)
-	integrate_neumann!(pdom, actt)
+	integrate_neumann!(pdom, dom.actt)
 	return nothing
 end
 

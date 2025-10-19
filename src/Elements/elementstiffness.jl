@@ -8,15 +8,6 @@ end
 
 using LinearAlgebra, StaticArrays
 
-#@generated function σ_dev(σ::SVector{VOIGTDIM,Float64}) where {VOIGTDIM}
-#	@assert VOIGTDIM==3 || VOIGTDIM==6 "Error Voigt notation. VOIGTDIM=$VOIGTDIM"
-#	if VOIGTDIM==3
-#
-#	else
-#		
-#	end
-#end
-
 function response1(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     # Materialparameter
     E,ν,σy = matpars.E, matpars.ν, matpars.σy
@@ -140,7 +131,6 @@ end
 
 @generated function elFM(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, fun, 𝐍s, X0s, detJs, wips, actt) where {NIPs, NNODES, DIM}
 	DIMTimesNNODES = DIM*NNODES
-	#println(typeof(wips)," ",wips)
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
@@ -203,7 +193,6 @@ function elPost(𝐍, vals, detJ, w::Float64)
 end
 
 @generated function elPost(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
-	#println(typeof(wips)," ",wips)
 	NNODES3 = NNODES*3
 	body = Expr(:block)
 	for ip in 1:NIPs
