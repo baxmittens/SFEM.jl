@@ -10,7 +10,6 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
 
 function lin_func(x,xmin,ymin,xmax,ymax)
 	a = (ymax-ymin)/(xmax-xmin)

@@ -10,7 +10,6 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
 
 plotting=false
 

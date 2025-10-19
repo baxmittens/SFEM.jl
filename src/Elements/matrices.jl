@@ -85,3 +85,66 @@ end
 function thermal_expansivity(::Type{Val{2}}, matpars::MatPars)
    return SVector{3,Float64}(matpars.α_Tx,matpars.α_Ty,0.0)
 end
+
+@generated function Jacobis(elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM2,Float64,DIM2timesNNodes}}) where {DIM,DIM2,NNODES, DIMtimesNNodes,DIM2timesNNodes, NIPs}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(elX0*d𝐍s[$ip]))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end
+@generated function DetJs(Js::NTuple{NIPs, SMatrix{N,NN,Float64,NtimesNN}}) where {NIPs, N, NN, NtimesNN}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(det(Js[$ip])))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end
+
+@generated function elX0s(elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}) where {DIM,NNODES, DIMtimesNNodes, NIPs}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(elX0 * 𝐍s[$ip]))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end
+
+@generated function elInvJs(Js::NTuple{NIPs, SMatrix{N,N,Float64,NtimesN}}) where {NIPs, N, NtimesN}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(inv(Js[$ip])))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end
+@generated function Grad𝐍s(d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, invJs::NTuple{NIPs, SMatrix{DIM,DIM,Float64,DIMtimesDIM}}) where {DIM,NNODES, DIMtimesNNodes, NIPs, DIMtimesDIM}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(d𝐍s[$ip]*invJs[$ip]))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end
+@generated function el𝐁s(::Type{Tri{DIM, NNODES, NIPs, DIMtimesNNodes}}, grad𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}) where {DIM,NNODES, DIMtimesNNodes, NIPs}
+    exprs = Vector{Expr}()
+    for ip = 1:NIPs
+        push!(exprs, :(Blin0(Tri{$DIM, $NNODES, $NIPs, $DIMtimesNNodes}, grad𝐍s[$ip])))
+    end
+    tup = (Expr(:tuple, exprs...))
+    return quote
+        return $tup
+    end
+end

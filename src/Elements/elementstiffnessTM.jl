@@ -43,9 +43,9 @@ end
 end
 
 function elStiffnessTM(el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{DIM, NNODES2, NIPs, DIMtimesNNodes2}, dofmap1, dofmap2, U, Uprev, shapeFuns1, shapeFuns2, actt, Δt) where {DIM, NNODES1, NNODES2, NIPs, DIMtimesNNodes1, DIMtimesNNodes2}
-	𝐁s, 𝐍s, nodalU, εpls, detJs, wips, X0s = elStiffnessVals(el1, dofmap1, U, shapeFuns1, actt)
-	grad𝐍sT, 𝐍sT, nodalT, nodalTm1, _, _, _ = elStiffnessTVals(el2, dofmap2, U, Uprev, shapeFuns2, actt)
-	return elStiffnessTM(Val{NIPs}, Val{NNODES1}, Val{NNODES2}, Val{DIM}, el1.state.state, el1.matpars, 𝐁s, 𝐍s, 𝐍sT, grad𝐍sT, nodalU, nodalT, nodalTm1, εpls, detJs, wips, Δt, X0s, actt)
+	𝐁s, 𝐍s, nodalU, εpls, detJs, X0s = elStiffnessVals(el1, shapeFuns1.d𝐍s, shapeFuns1.𝐍s, el1.nodes, dofmap1, U, actt)
+	grad𝐍sT, 𝐍sT, nodalT, nodalTm1, _, _ = elStiffnessTVals(el2, shapeFuns2.d𝐍s, shapeFuns2.𝐍s, el2.nodes, dofmap2, U, Uprev, actt)
+	return elStiffnessTM(Val{NIPs}, Val{NNODES1}, Val{NNODES2}, Val{DIM}, el1.state.state, el1.matpars, 𝐁s, 𝐍s, 𝐍sT, grad𝐍sT, nodalU, nodalT, nodalTm1, εpls, detJs, shapeFuns1. wips, Δt, X0s, actt)
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, ::Type{HeatConduction}, state::IPStateVars2D, matpars, 𝐁, grad𝐍_temp, 𝐍_temp, nodalU, nodalT, actt)
@@ -59,8 +59,8 @@ function updateTrialStates!(::Type{LinearElasticity}, ::Type{HeatConduction}, st
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, ::Type{HeatConduction}, el1::Tri{DIM, NNODES1, NIPs, DIMtimesNNodes1}, el2::Tri{DIM, NNODES2, NIPs, DIMtimesNNodes2}, dofmap1, dofmap2, U, shapeFuns1, shapeFuns2, actt) where {DIM, NNODES1, NNODES2, NIPs, DIMtimesNNodes1, DIMtimesNNodes2}
-	𝐁s, _, nodalU, _, _, _ = elStiffnessVals(el1, dofmap1, U, shapeFuns1, actt)
-	grad𝐍s, 𝐍s, nodalT, _, _, _ = elStiffnessTVals(el2, dofmap2, U, U, shapeFuns2, actt)
+	𝐁s, _, nodalU, _, _, _ = elStiffnessVals(el1, shapeFuns1.d𝐍s, shapeFuns1.𝐍s, el1.nodes, dofmap1, U, actt)
+	grad𝐍s, 𝐍s, nodalT, _, _, _ = elStiffnessTVals(el2, shapeFuns2.d𝐍s, shapeFuns2.𝐍s, el2.nodes, dofmap2, U, U, actt)
 	foreach((ipstate,𝐁, grad𝐍temp, 𝐍_temp)->updateTrialStates!(LinearElasticity, HeatConduction, ipstate, el1.matpars, 𝐁, grad𝐍temp, 𝐍_temp, nodalU, nodalT, actt), el1.state.state, 𝐁s, grad𝐍s, 𝐍s)
 	return nothing
 end

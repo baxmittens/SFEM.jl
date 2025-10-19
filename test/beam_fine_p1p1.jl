@@ -10,7 +10,6 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
 
 ### Load mesh
 meshfilepath = "../models/2d/beam_fine_tri3.msh"

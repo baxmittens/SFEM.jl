@@ -36,26 +36,22 @@ end
 	end
 end
 
-function elStiffnessTVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, Uprev, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	d𝐍s = shapeFuns.d𝐍s
-	𝐍s = shapeFuns.𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	X0s = ntuple(ip->elX0*𝐍s[ip], NIPs)
+function elStiffnessTVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, dofmap, U, Uprev, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
 	eldofs = dofmap[1,el.inds][:]
 	nodalT = U[eldofs]
 	nodalTm1 = Uprev[eldofs]
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	detJs = DetJs(Js)
 	@assert all(detJs .> 0) "error: det(JM) < 0"
-	invJs = ntuple(ip->inv(Js[ip]), NIPs)
-	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	return grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, wips, X0s
+	invJs = elInvJs(Js)
+	grad𝐍s = Grad𝐍s(d𝐍s, invJs)
+	return grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, X0s
 end
 
 function elStiffnessT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, matpars, dofmap, U, Uprev, shapeFuns, actt, Δt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, wips, X0s = elStiffnessTVals(el, dofmap, U, Uprev, shapeFuns, actt)
-	return elStiffnessT(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, matpars, grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, wips, Δt, X0s, actt)
+	grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, X0s = elStiffnessTVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, Uprev, actt)
+	return elStiffnessT(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, matpars, grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, shapeFuns.wips, Δt, X0s, actt)
 end
 
 function elFT(fun::Function, 𝐍, X0, detJ, w::Float64, actt)
@@ -64,7 +60,6 @@ function elFT(fun::Function, 𝐍, X0, detJ, w::Float64, actt)
 end
 
 @generated function elFT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, fun, 𝐍s, X0s, detJs, wips, actt) where {NIPs, NNODES}
-	#println(typeof(wips)," ",wips)
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
@@ -78,16 +73,16 @@ end
 	end
 end
 
-function elFT(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐍s = shapeFuns.𝐍s
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	X0s = ntuple(ip->elX0*𝐍s[ip], NIPs)
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
+function elFT(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM2,Float64,DIM2timesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, DIM2, NNODES, NIPs, DIMtimesNNodes, DIM2timesNNodes}
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
 	detJs = ntuple(ip->norm(Js[ip]), NIPs)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elFT(Val{NIPs}, Val{NNODES}, fun, 𝐍s, X0s, detJs, wips, actt)
+end
+
+function elFT(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elFT(fun, el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
 end
 
 @generated function elPostT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
@@ -106,15 +101,15 @@ end
 	end
 end
 
-function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐍s = shapeFuns.𝐍s
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = DetJs(Js)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elPostT(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
+end
+
+function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elPostT(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
 end
 
 function updateTrialStates!(::Type{HeatConduction}, state::IPStateVars2D, matpars, grad𝐍_temp, nodalT)
@@ -124,7 +119,7 @@ function updateTrialStates!(::Type{HeatConduction}, state::IPStateVars2D, matpar
 end
 
 function updateTrialStates!(::Type{HeatConduction}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	grad𝐍s, _, nodalT, _, _, _, _ = elStiffnessTVals(el, dofmap, U, U, shapeFuns, actt)
+	grad𝐍s, _, nodalT, _, _, _ = elStiffnessTVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, U, actt)
 	foreach((ipstate,grad𝐍)->updateTrialStates!(HeatConduction, ipstate, el.matpars,  grad𝐍, nodalT), el.state.state, grad𝐍s)
 	return nothing
 end

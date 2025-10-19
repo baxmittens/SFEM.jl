@@ -10,7 +10,6 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
 
 ### Load mesh
 meshfilepath = "../models/2d/beam_fine_tri10.msh"
@@ -114,7 +113,7 @@ heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap
 dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichletT=dirichletT)
 ###
 ### Solve
-@time tsolve!(dom)
+#@time tsolve!(dom)
 ###
 
 ### Plotting

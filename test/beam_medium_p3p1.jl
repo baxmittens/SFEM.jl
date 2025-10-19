@@ -10,7 +10,8 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
+
+plotting=false
 
 # Define nnodes per element
 nnodes_element1 = 10
@@ -58,7 +59,7 @@ ElType2 = Tri{2,nnodes_element2,nips,2*nnodes_element2}
 ElLineType1 = Line{2,nnodes_neumann1,nips_neumann,2*nnodes_neumann1}
 ElLineType2 = Line{2,nnodes_neumann2,nips_neumann,2*nnodes_neumann2}
 # Time stepping
-ts = collect(0.0:1e4:3e4)
+ts = collect(0.0:5e5:5e5)
 nts = length(ts)
 # init state variables per nip and timestep
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity1];
@@ -148,7 +149,6 @@ dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichle
 ###
 
 ### Plotting
-plotting=true
 if plotting
 using GLMakie
 import GeometryBasics

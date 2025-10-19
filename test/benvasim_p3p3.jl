@@ -10,13 +10,14 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 
 using StaticArrays
 using LinearAlgebra
-using VTUFileHandler
 
 function lin_func(x,xmin,ymin,xmax,ymax)
 	a = (ymax-ymin)/(xmax-xmin)
 	b = ymax-a*xmax
 	return a*x+b
 end
+
+plotting=true
 
 ### Load mesh
 # Canister -> ID 0
@@ -135,7 +136,6 @@ dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichle
 ###
 
 ### Plotting
-plotting=true
 if plotting
 using GLMakie
 import GeometryBasics
@@ -147,7 +147,7 @@ end
 # Sample over line xStart ... xEnd
 xStart = SVector{2,Float64}(0.0,0.0)
 xEnd = SVector{2,Float64}(25.0,12.5)
-nsamplepoints = 200
+nsamplepoints = 500
 valkeys_line = [:U_1, :U_2, :σ_1, :σ_2, :σ_3, :ΔT_1]
 valkeys_dom = [[:U, :σ,],[:ΔT, :q]]
 
