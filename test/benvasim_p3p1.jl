@@ -73,7 +73,7 @@ ElType2 = Tri{2,nnodes_element2,nips,2*nnodes_element2}
 ElLineType1 = Line{2,nnodes_neumann1,nips_neumann,2*nnodes_neumann1}
 ElLineType2 = Line{2,nnodes_neumann2,nips_neumann,2*nnodes_neumann2}
 # Time stepping
-ts = vcat(0.0,collect(range(1, 63115200000.0, 10)))
+ts = vcat(0.0,collect(range(1, 63115200000.0, 3)))
 nts = length(ts)
 # init state variables per nip and timestep
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity1];
@@ -183,12 +183,14 @@ controlview = f[1,1] = GridLayout()
 controlsubview = controlview[2,1] = GridLayout()
 fieldmenu = Menu(controlsubview[1,1], options=["_1/xx", "_2/yy", "_3/xy", "norm"])
 Label(controlsubview[1,2], text="show mesh:")
-togglemesh = Toggle(controlsubview[1,3], active = false)
-plotview = f[2,1] = GridLayout()
+Label(controlsubview[1,2], text="global colormap:")
+toggleclrmp = Toggle(controlsubview[1,3], active = true)
+Label(controlsubview[1,4], text="show mesh:")
+togglemesh = Toggle(controlsubview[1,5], active = false)
 lineplotview = plotview[1,2] = GridLayout()
 domplotview = plotview[1,1] = GridLayout()
 timeslider = Slider(controlview[1,1], range = 1:length(ts), startvalue=length(ts), update_while_dragging=false)
-dispmult = Slider(controlsubview[1,4], range = [1,10,100,1000,2000,5000,10000,20000], startvalue=1, update_while_dragging=false)
+dispmult = Slider(controlsubview[1,6], range = [1,10,100,1000,2000,5000,10000,20000], startvalue=1, update_while_dragging=false)
 timetext = map!(Observable{Any}(), timeslider.value) do i
 	return string(round(ts[i]/60/60/24/365.25,digits=2))
 end
@@ -196,7 +198,7 @@ dispmultslidertext = map!(Observable{Any}(), dispmult.value) do val
 	return "disp. mult.=$val"
 end
 Label(controlview[1,2], text=timetext)
-Label(controlsubview[1,5], text=dispmultslidertext)
+Label(controlsubview[1,7], text=dispmultslidertext)
 plotLine!(lineplotview, valkeys_line,timeslider, dom, xStart, xEnd, nsamplepoints)
 plotconns = ntuple(i->plotConnectivity(dom.processes[i]), length(dom.processes))
 points = ntuple(i->getPoints2f(dom.processes[i], timeslider, dispmult), length(dom.processes))
@@ -205,8 +207,10 @@ axhandles = Dict{Symbol, Any}()
 for (i,plotrow) in enumerate(valkeys_dom)
 	if length(dom.processes) >= i
 		for (j,valk) in enumerate(plotrow)
-			ax_handle = plotField!(domplotview[i,j], dom.processes[i], valk, points[i], plotconns[i], timeslider, fieldmenu)
-			axhandles[valk] = ax_handle
+			if haskey(dom.processes[i].postdata.timesteps[1].pdat, valk)
+				ax_handle = plotField!(domplotview[i,j], dom.processes[i], valk, points[i], plotconns[i], timeslider, fieldmenu, toggleclrmp.active)
+				axhandles[valk] = ax_handle
+			end
 		end
 	end
 end
@@ -214,7 +218,11 @@ faces = [GeometryBasics.TriangleFace(dom.processes[1].connectivity[j][1], dom.pr
 meshobs = map!(Observable{Any}(), points[1]) do p
 	GeometryBasics.Mesh(p, faces)
 end
-wireframe!(axhandles[:U], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+if haskey(axhandles, :U)
+	wireframe!(axhandles[:U], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+else
+	wireframe!(axhandles[:ΔT], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+end
 display(f)
 end
 ###

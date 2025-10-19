@@ -156,14 +156,16 @@ f = Figure(size=(1600,900));
 controlview = f[1,1] = GridLayout()
 controlsubview = controlview[2,1] = GridLayout()
 fieldmenu = Menu(controlsubview[1,1], options=["_1/xx", "_2/yy", "_3/xy", "norm"])
-Label(controlsubview[1,2], text="show mesh:")
-togglemesh = Toggle(controlsubview[1,3], active = false)
+Label(controlsubview[1,2], text="global colormap:")
+toggleclrmp = Toggle(controlsubview[1,3], active = true)
+Label(controlsubview[1,4], text="show mesh:")
+togglemesh = Toggle(controlsubview[1,5], active = false)
 plotview = f[2,1] = GridLayout()
 lineplotview = plotview[1,2] = GridLayout()
 domplotview = plotview[1,1] = GridLayout()
 colsize!(plotview, 1, Relative(4/5))
 timeslider = Slider(controlview[1,1], range = 1:length(ts), startvalue=length(ts), update_while_dragging=false)
-dispmult = Slider(controlsubview[1,4], range = [1,10,100,1000,2000,5000,10000,20000], startvalue=1, update_while_dragging=false)
+dispmult = Slider(controlsubview[1,6], range = [1,10,100,1000,2000,5000,10000,20000], startvalue=1, update_while_dragging=false)
 timetext = map!(Observable{Any}(), timeslider.value) do i
 	return string(round(ts[i]/60/60/24/365.25,digits=2))
 end
@@ -171,7 +173,7 @@ dispmultslidertext = map!(Observable{Any}(), dispmult.value) do val
 	return "disp. mult.=$val"
 end
 Label(controlview[1,2], text=timetext)
-Label(controlsubview[1,5], text=dispmultslidertext)
+Label(controlsubview[1,7], text=dispmultslidertext)
 plotLine!(lineplotview, valkeys_line, timeslider, dom, xStart, xEnd, nsamplepoints, true)
 plotconns = ntuple(i->plotConnectivity(dom.processes[i]), length(dom.processes))
 points = ntuple(i->getPoints2f(dom.processes[i], timeslider, dispmult), length(dom.processes))
@@ -179,7 +181,7 @@ axhandles = Dict{Symbol, Any}()
 for (i,plotrow) in enumerate(valkeys_dom)
 	if length(dom.processes) >= i
 		for (j,valk) in enumerate(plotrow)
-			ax_handle = plotField!(domplotview[j,i], dom.processes[i], valk, points[i], plotconns[i], timeslider, fieldmenu)
+			ax_handle = plotField!(domplotview[j,i], dom.processes[i], valk, points[i], plotconns[i], timeslider, fieldmenu, toggleclrmp.active)
 			axhandles[valk] = ax_handle
 		end
 	end
@@ -188,7 +190,11 @@ faces = [GeometryBasics.TriangleFace(dom.processes[1].connectivity[j][1], dom.pr
 meshobs = map!(Observable{Any}(), points[1]) do p
 	GeometryBasics.Mesh(p, faces)
 end
-wireframe!(axhandles[:U], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+if haskey(axhandles, :U)
+	wireframe!(axhandles[:U], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+else
+	wireframe!(axhandles[:ΔT], meshobs, color = (:black, 0.75), linewidth = 0.5, transparency = true, visible=togglemesh.active)
+end
 display(f)
 end
 ###

@@ -171,16 +171,34 @@ function _getfield(x,ind)
 	end
 end
 
-function plotField!(gridlayout, pdom, fieldname::Symbol, points, conn, timeslider, fieldmenu, colormap=reverse(cgrad(:RdBu)))
+function plotField!(gridlayout, pdom, fieldname::Symbol, points, conn, timeslider, fieldmenu, global_colormap, colormap=reverse(cgrad(:RdBu)))
 	compdict = Dict("_1/xx"=>x->_getfield(x,1), "_2/yy"=>x->_getfield(x,2), "_3/xy"=>x->_getfield(x,3), "norm"=>x->map(norm,eachrow(x)))
+	globalcolormapdict = Dict{String,Any}()
+	for (k,fun) in compdict
+		maxval = maximum(map(ti->maximum(fun(pdom.postdata.timesteps[ti].pdat[fieldname])), 1:length(pdom.postdata.timesteps)))
+		minval = minimum(map(ti->minimum(fun(pdom.postdata.timesteps[ti].pdat[fieldname])), 1:length(pdom.postdata.timesteps)))
+		if isapprox(minval,maxval, atol=1e-8)
+			globalcolormapdict[k] = (minval-1,maxval+1)
+		else
+			globalcolormapdict[k] = (minval,maxval)
+		end
+	end
 	postData = map!(Observable{Any}(), fieldmenu.selection, timeslider.value) do field,ti
 		return compdict[field](pdom.postdata.timesteps[ti].pdat[fieldname])
 	end
 	ax = Axis(gridlayout[1,1], autolimitaspect = 1, title=string(fieldname))
-	tch = mesh!(ax, points, hcat(conn...)', color=postData, colormap=colormap, shading=false)
+	cr = map!(Observable{Any}(), fieldmenu.selection, global_colormap) do field, gclrm
+		if gclrm
+			return globalcolormapdict[field]
+		else
+			Makie.automatic
+		end
+	end
+	tch = mesh!(ax, points, hcat(conn...)', color=postData, colormap=colormap, shading=false, colorrange=cr)
 	Colorbar(gridlayout[1,2], tch, tickformat=vals->[@sprintf("%.2e", val) for val in vals])
 	return ax
 end
+
 
 function facecolor(vertices,faces,facecolors)
 	v = zeros(size(faces,1)*3,2)
