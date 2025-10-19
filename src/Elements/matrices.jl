@@ -5,27 +5,6 @@ function smallDet(M::SMatrix{3,3,Float64,9})
 	@inbounds return (M[1,1]*(M[2,2]*M[3,3]-M[2,3]*M[3,2]) - M[1,2]*(M[2,1]*M[3,3]-M[2,3]*M[3,1]) + M[1,3]*(M[2,1]*M[3,2]-M[2,2]*M[3,1]))
 end
 
-function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]
-    ]
-end
-function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0 			gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0	
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]	0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
-    ]
-end
-function Blin0(::Type{Tri{2,10,NIPs,20}}, gradN::SMatrix{10,2,Float64,20}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0           gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0   gradN[7,1]  0.0   gradN[8,1]  0.0        gradN[9,1]  0.0   gradN[10,1]  0.0   
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]    0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]    0.0       gradN[7,2]    0.0    gradN[8,2] 0.0   gradN[9,2] 0.0    gradN[10,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]    gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]    gradN[7,2]  gradN[7,1]    gradN[8,2]  gradN[8,1] gradN[9,2]  gradN[9,1] gradN[10,2]  gradN[10,1]
-    ]
-end
 function NMat(N::SVector{2,Float64})
     return @SMatrix [
         N[1]  0.0   N[2]  0.0
@@ -57,6 +36,43 @@ function NMat(N::SVector{10,Float64})
     ]
 end
 
+function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]
+    ]
+end
+function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0 			gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0	
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]	0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
+    ]
+end
+function Blin0(::Type{Tri{2,10,NIPs,20}}, gradN::SMatrix{10,2,Float64,20}) where {NIPs}
+    return @SMatrix [
+        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0           gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0   gradN[7,1]  0.0   gradN[8,1]  0.0        gradN[9,1]  0.0   gradN[10,1]  0.0   
+        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]    0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]    0.0       gradN[7,2]    0.0    gradN[8,2] 0.0   gradN[9,2] 0.0    gradN[10,2]
+        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]    gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]    gradN[7,2]  gradN[7,1]    gradN[8,2]  gradN[8,1] gradN[9,2]  gradN[9,1] gradN[10,2]  gradN[10,1]
+    ]
+end
+
+function combine(Kuu::SMatrix{6,6,T,36}, KuT::SMatrix{6,3,T,18}, KTT::SMatrix{3,3,T,9}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{3,6,Float64,18}), KTT))
+end
+function combine(Kuu::SMatrix{12,12,T,144}, KuT::SMatrix{12,6,T,72}, KTT::SMatrix{6,6,T,36}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{6,12,Float64,72}), KTT))
+end
+function combine(Kuu::SMatrix{12,12,T,144}, KuT::SMatrix{12,3,T,36}, KTT::SMatrix{3,3,T,9}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{3,12,Float64,36}), KTT))
+end
+function combine(Kuu::SMatrix{20,20,T,400}, KuT::SMatrix{20,10,T,200}, KTT::SMatrix{10,10,T,100}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{10,20,Float64,200}), KTT))
+end
+function combine(Kuu::SMatrix{20,20,T,400}, KuT::SMatrix{20,3,T,60}, KTT::SMatrix{3,3,T,9}) where {T}
+    return vcat(hcat(Kuu, KuT), hcat(zeros(SMatrix{3,20,Float64,60}), KTT))
+end
 
 function MaterialStiffness(::Type{Val{2}}, matpars::MatPars)
 	E,ν = matpars.E, matpars.ν

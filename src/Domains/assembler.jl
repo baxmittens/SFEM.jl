@@ -99,8 +99,8 @@ function assemble!(dom::Domain{Tuple{ProcessDomain{P,T1,T2,E1,E2,DMD1}}}) where 
 end
 
 @generated function _dofmap(::Type{Val{DIM}}, ::Type{Val{NNODES2}}, dofmap1, dofmap2, elinds1::SVector{N,Int}, elinds2::SVector{M,Int}) where {DIM,NNODES2,N,M}
-    @assert isapprox(round(NNODES2/(DIM+1)), NNODES2/(DIM+1))
-    NNODES = round(Int, NNODES2/(DIM+1))
+    #@assert isapprox(round(NNODES2/(DIM+1)), NNODES2/(DIM+1)) "NNODES2=$NNODES2; DIM=$DIM; N=$N; M=$M"
+    NNODES = N+M
     exprs = Vector{Expr}()
     for i in 1:N
         for j = 1:2

@@ -4,6 +4,13 @@ using StaticArrays
 import LinearAlgebra
 import ...SFEM: LinearElasticity, HeatConduction
 
+function bodyforceT(x, matpars, actt)
+	return 0.0
+end
+function bodyforceM(x, matpars, actt)
+	return SVector{2,Float64}(0.0,0.0)
+end
+
 abstract type GenericRefElement
 end
 abstract type ContinuumRefElement <: GenericRefElement
@@ -151,8 +158,6 @@ struct MatPars
 	E::Float64
 	ν::Float64
 	σy::Float64
-	bodyforceM::Function
-	bodyforceT::Function
 	materialID::Int
 end
 

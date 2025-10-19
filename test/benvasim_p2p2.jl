@@ -22,44 +22,52 @@ end
 # Canister -> ID 0
 # Backfill -> ID 1
 # Domain -> ID 2
-meshfilepath = "../models/2d/benvasim_tri10.msh"
+meshfilepath = "../models/2d/benvasim_tri6.msh"
 mesh = GmshMesh(meshfilepath);
+nnodes_element = 6
+nnodes_neumann = 3
+
 
 # connectivity is missing. Load that too
-f = open(meshfilepath)
-lines = readlines(f)
-close(f)
+filestream = open(meshfilepath)
+lines = readlines(filestream)
+close(filestream)
 indline1 = findfirst(x->occursin("\$Elements", x), lines)
 indline2 = findfirst(x->occursin("\$EndElements", x), lines)
 nodes = mesh.nodes
 matids = mesh.elemPhysNums
-connectivity = filter(x->length(x)==10, map(x->map(y->parse(Int,y), split(x)[2:end]),lines[indline1+3:indline2-1]))
+connectivity = filter(x->length(x)==nnodes_element, map(x->map(y->parse(Int,y), split(x)[2:end]),lines[indline1+3:indline2-1]))
 ###
 
 ### Define Elements
 # Number integration points
-nips = 13
+nips = 7
+nips_neumann = 3
+# Define Eltype
+ElType = Tri{2,nnodes_element,nips,2*nnodes_element}
+ElLineType = Line{2,nnodes_neumann,nips_neumann,2*nnodes_neumann}
 # Time stepping
-ts = vcat(0.0,collect(range(1, 63115200000.0, 70)))
+ts = vcat(0.0,collect(range(1, 63115200000.0, 10)))
 nts = length(ts)
 # init state variables per nip and timestep
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity];
 ## define body forces as function
+import SFEM.Elements: bodyforceM, bodyforceT 
 # Thermo ts 0...31557600000 qs 51...0
-funT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 2 && actt < 27 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
+bodyforceT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 2 && actt < 27 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
 # Mechanic no body force
-funM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
+bodyforceM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 ## Material 
 # Canister
-matpars0 = MatPars(6700.0, 500.0, 1.7e-05, 1.7e-05, 0.0, 16.0, 16.0, 0.0, 195_000_000_000.0, 0.3, Inf, funM, funT, 0)
+matpars0 = MatPars(6700.0, 500.0, 1.7e-05, 1.7e-05, 0.0, 16.0, 16.0, 0.0, 195_000_000_000.0, 0.3, Inf, 0)
 # Backfill
-matpars1 = MatPars(1575.0, 1090.0,  2.5e-5, 2.5e-5, 0.0, 1.17, 1.17, 0.0, 100_000_000.0, 0.1  , Inf, funM, funT, 1)
+matpars1 = MatPars(1575.0, 1090.0,  2.5e-5, 2.5e-5, 0.0, 1.17, 1.17, 0.0, 100_000_000.0, 0.1  , Inf, 1)
 # Domain
-matpars2 = MatPars(2495.0, 1060.0,  2e-5, 2e-5, 0.0, 1.84, 1.84, 0.0, 5_000_000_000.0, 0.3, Inf, funM, funT, 2)
+matpars2 = MatPars(2495.0, 1060.0,  2e-5, 2e-5, 0.0, 1.84, 1.84, 0.0, 5_000_000_000.0, 0.3, Inf, 2)
 matparsdict = Dict(1=>matpars0, 2=>matpars1, 3=>matpars2)
 ## Create elements T->Tri10, M->Tri10
-els1 = Tri{2,10,nips,20}[Tri10(SMatrix{2,10,Float64,20}(nodes[elinds,1:2]'), SVector{10,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
-els2 = Tri{2,10,nips,20}[Tri10(SMatrix{2,10,Float64,20}(nodes[elinds,1:2]'), SVector{10,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+els1 = ElType[Tri6(SMatrix{2,nnodes_element,Float64,2*nnodes_element}(nodes[elinds,1:2]'), SVector{nnodes_element,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
+els2 = ElType[Tri6(SMatrix{2,nnodes_element,Float64,2*nnodes_element}(nodes[elinds,1:2]'), SVector{nnodes_element,Int}(elinds), state, matparsdict[matids[i]], Val{nips}) for (i,(elinds,state)) in enumerate(zip(connectivity, states))];
 ###
 
 ### Boundary Conditions
@@ -90,15 +98,15 @@ end
 ## Neumann
 # Compute Line elements
 neumann_inds = findall(x->isapprox(x[2],100.0,atol=1e-5), eachrow(nodes))
-lines = [SVector{4,Int}(1,4,5,2), SVector{4,Int}(2,6,7,3), SVector{4,Int}(3,8,9,1)]
-nips_neumann = 6
-neumann_els_M = Line{2,4,nips_neumann,8}[]
-neumann_els_T = Line{2,4,nips_neumann,8}[]
+lines = [SVector{3,Int}(1,4,2), SVector{3,Int}(2,5,3), SVector{3,Int}(3,6,1)]
+
+neumann_els_M = ElLineType[]
+neumann_els_T = ElLineType[]
 for el in els1
 	for line in lines
 		inds = el.inds[line]
 		if all(map(x->x ∈ neumann_inds, inds))
-			push!(neumann_els_M, Line(SMatrix{2,4,Float64,8}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
+			push!(neumann_els_M, Line(SMatrix{2,nnodes_neumann,Float64,2*nnodes_neumann}(nodes[inds,1:2]'), inds, Val{nips_neumann}))
 		end
 	end
 end
@@ -117,7 +125,7 @@ dofmap2 = convert(Matrix{Int}, reshape(ndofs1+1:ndofs1+ndofs2,1,:))
 ###
 
 ### Create ProcessDomains
-linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, Line{2,4,nips_neumann,8}, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
+linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofmap1, nts, Val{2}, ElLineType, els_neumann=neumann_els_M, fun_neumann=fun_neumann_M)
 heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nts, Val{1}, Nothing)
 ###
 ### Create Domain
@@ -128,7 +136,7 @@ dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichle
 ###
 
 ### Plotting
-plotting=false
+plotting=true
 if plotting
 using GLMakie
 import GeometryBasics
@@ -163,7 +171,7 @@ dispmultslidertext = map!(Observable{Any}(), dispmult.value) do val
 end
 Label(controlview[1,2], text=timetext)
 Label(controlsubview[1,5], text=dispmultslidertext)
-plotLine!(lineplotview, valkeys,timeslider, dom, xStart, xEnd, nsamplepoints)
+plotLine!(lineplotview, valkeys_line,timeslider, dom, xStart, xEnd, nsamplepoints)
 plotconn = plotConnectivity(dom.processes[1])
 points = getPoints2f(dom.processes[1], timeslider, dispmult)
 axhandles = Dict{Symbol, Any}()

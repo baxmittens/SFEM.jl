@@ -1,6 +1,6 @@
 using GLMakie
-using GeometryBasics
 using LinearAlgebra
+using Printf
 
 using NearestNeighbors
 function elementCoords(xPt::SVector{N,Float64}, pdom, kdtree_faces) where {N}
@@ -41,7 +41,7 @@ function sampleResult!(valDict, pdom::ProcessDomain{P, Tri{N,M,NIPs,NM}}, xStart
 	elCoords = Vector{Tuple{Int, SVector{2,Float64}}}(undef, nsamplepoints)
 	for (i,xPt) in enumerate(xPts)
 		success, elind, ξ = elementCoords(xPt, pdom, kdtree_faces)
-		@assert success "$xPt"
+		@assert success "$xPt not found in processdomain $(typeof(pdom))"
 		elCoords[i] = elind,ξ
 	end
 	pdatkeys = collect(keys(pdom.postdata.timesteps[1].pdat))
@@ -67,24 +67,33 @@ function sampleResult!(valDict, pdom::ProcessDomain{P, Tri{N,M,NIPs,NM}}, xStart
 	return xPts, pts
 end
 
-function plotLine!(gridlayout, valkeys, timeslider, dom, xStart, xEnd, nsamplepoints=50)
+function plotLine!(gridlayout, valkeys, timeslider, dom, xStart, xEnd, nsamplepoints=50, flipaxes=false)
 	valDict = Dict{Symbol, Matrix{Float64}}()
 	xPts, pts = sampleResult!(valDict, dom.processes[1], xStart, xEnd, nsamplepoints)
 	for pdom in dom.processes[2:end]
 		xPts, pts = sampleResult!(valDict, pdom, xStart, xEnd, nsamplepoints)
 	end
 	for (i,valkey) in enumerate(sort(collect(keys(valDict))∩valkeys))
-		ax = Axis(gridlayout[i,1])
+		ax = Axis(gridlayout[i,1], ylabel=string(valkey))
 		vals = map!(Observable{Any}(), timeslider.value) do ts
 			vals = valDict[valkey][ts,:]
 			minval = minimum(valDict[valkey])
 			maxval = maximum(valDict[valkey])
 			diffval = maxval-minval
-			ylims!(ax, (minval-0.05*diffval, maxval+0.05*diffval))
+			if diffval > 1e-6
+				if flipaxes
+					xlims!(ax, (minval-0.05*diffval, maxval+0.05*diffval))
+				else
+					ylims!(ax, (minval-0.05*diffval, maxval+0.05*diffval))
+				end
+			end
 			return vals
 		end
-		lines!(ax, pts, vals, label=string(valkey))
-		axislegend()
+		if flipaxes
+			lines!(ax, vals, pts)
+		else
+			lines!(ax, pts, vals)
+		end
 	end
 	return nothing
 end
@@ -106,16 +115,23 @@ end
 function getPoints2f(pdom,  timeslider, dispslider)
 	points = map!(Observable{Any}(), timeslider.value, dispslider.value) do val,val2
 		X = pdom.nodes[:,1];
-		U1 = pdom.postdata.timesteps[val].pdat[:U][:,1].*val2
 		Y = pdom.nodes[:,2];
-		U2 = pdom.postdata.timesteps[val].pdat[:U][:,2].*val2
+		U1 = similar(X)
+		U2 = similar(Y)
+		if haskey(pdom.postdata.timesteps[val].pdat, :U)
+			U1 = pdom.postdata.timesteps[val].pdat[:U][:,1].*val2
+			U2 = pdom.postdata.timesteps[val].pdat[:U][:,2].*val2
+		else
+			fill!(U1, 0.0)
+			fill!(U2, 0.0)
+		end
 		return GeometryBasics.Point2f.(X .+ U1, Y .+ U2)	
 	end
 	return points
 end
 
 function plotConnectivity(pdom)
-	_conn = dom.processes[1].connectivity;
+	_conn = pdom.connectivity;
 	if length(_conn[1])==6
 		conn = Vector{Vector{Int64}}(undef, 4*length(_conn))
 		for i = 1:length(_conn)
@@ -149,7 +165,9 @@ function _getfield(x,ind)
 	if size(x,2) >= ind
 		return x[:,ind]
 	else
-		return similar(x[:,1])
+		tmp = similar(x[:,1])
+		fill!(tmp,0.0)
+		return tmp
 	end
 end
 
@@ -160,7 +178,7 @@ function plotField!(gridlayout, pdom, fieldname::Symbol, points, conn, timeslide
 	end
 	ax = Axis(gridlayout[1,1], autolimitaspect = 1, title=string(fieldname))
 	tch = mesh!(ax, points, hcat(conn...)', color=postData, colormap=colormap, shading=false)
-	Colorbar(gridlayout[1,2], tch)
+	Colorbar(gridlayout[1,2], tch, tickformat=vals->[@sprintf("%.2e", val) for val in vals])
 	return ax
 end
 
