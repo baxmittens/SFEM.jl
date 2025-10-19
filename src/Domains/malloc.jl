@@ -1,14 +1,14 @@
 
-struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
+struct ProcessDomainMalloc{ENNODES1,ENNODES2,ENNODESSQ}
 	Im::Vector{Int}
 	Jm::Vector{Int}
 	Vm::Vector{Float64}
 	σ::Matrix{Float64}
 	εpl::Matrix{Float64}
 	q::Matrix{Float64}
-	elMMats::Vector{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}}
-	Utmp::Vector{Float64}
-	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes, ndofs_node) where {ennodes}
+	elMMats::Vector{SMatrix{ENNODES1,ENNODES1,Float64,ENNODESSQ}}
+	elFn::Vector{SVector{ENNODES2,Float64}}
+	function ProcessDomainMalloc(nels, ::Type{Val{ennodes}}, nnodes, nels_neumann, ::Type{Val{ennodes_neumann}}) where {ennodes, ennodes_neumann}
 		nnz_total_mass = nels * ennodes^2
 		Im = Vector{Int}(undef, nnz_total_mass)
 		Jm = Vector{Int}(undef, nnz_total_mass)
@@ -17,8 +17,8 @@ struct ProcessDomainMalloc{ENNODES,ENNODESSQ}
 		εpl = zeros(Float64, nnodes, 3)
 		q = zeros(Float64, nnodes, 2)
 		elMMats = Vector{SMatrix{ennodes,ennodes,Float64,ennodes*ennodes}}(undef, nels)
-		Utmp = zeros(Float64, nnodes*ndofs_node)
-		return new{ennodes,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats,Utmp)
+		elFn = Vector{SVector{ennodes_neumann,Float64}}(undef, nels_neumann)
+		return new{ennodes,ennodes_neumann,ennodes*ennodes}(Im,Jm,Vm,σ,εpl,q,elMMats,elFn)
 	end
 end
 
@@ -27,7 +27,9 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	Uprev::Vector{Float64}
 	Utmp::Vector{Float64}
 	ΔU::Vector{Float64}
+	Uprev::Vector{Float64}
 	F::Vector{Float64}
+	Ftmp::Vector{Float64}
 	I::Vector{Int}
 	J::Vector{Int}
 	V::Vector{Float64}
@@ -39,11 +41,16 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 	Iptr::Vector{Int}
 	Vptr::Vector{Float64}
 	elMats::Vector{Tuple{SMatrix{ENNODES,ENNODES,Float64,ENNODESSQ}, SVector{ENNODES,Float64}}}
+	#Kglob::Union{SparseMatrixCSC{Float64, Int64},Nothing}
+	Kglob::Vector{SparseMatrixCSC{Float64, Int64}}
+	idxmap::Vector{Int}
+	luKglob::Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}
 	function DomainMalloc(nels,ndofs,ndofs_el)
 		U = zeros(Float64, ndofs)
 		Uprev = zeros(Float64, ndofs)
 		Utmp = zeros(Float64, ndofs)
 		ΔU = zeros(Float64, ndofs)
+		Uprev = zeros(Float64, ndofs)
 		F = zeros(Float64, ndofs)
 		ndofsq = ndofs_el^2
 		nnz_total = nels * ndofsq
@@ -58,7 +65,7 @@ struct DomainMalloc{ENNODES,ENNODESSQ}
 		Iptr = Vector{Int}(undef, nnz_total)
 		Vptr = Vector{Float64}(undef, nnz_total)
 		elMats = Vector{Tuple{SMatrix{ndofs_el,ndofs_el,Float64,ndofs_el*ndofs_el}, SVector{ndofs_el,Float64}}}(undef, nels)
-		return new{ndofs_el,ndofs_el*ndofs_el}(U,Uprev,Utmp,ΔU,F,I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats)
+		return new{ndofs_el,ndofs_el*ndofs_el}(U,ΔU,Uprev,F,Vector{Float64}(),I,J,V,klasttouch,csrrowptr,csrcolval,csrnzval,csccolptr,Iptr,Vptr,elMats,Vector{SparseMatrixCSC{Float64, Int64}}(),Vector{Int}(undef, nnz_total), Vector{SparseArrays.UMFPACK.UmfpackLU{Float64, Int64}}())
 	end
 end
 

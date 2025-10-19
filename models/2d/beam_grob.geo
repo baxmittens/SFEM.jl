@@ -1,8 +1,8 @@
 // Rechteck-Geometrie mit Netzverfeinerung
-Mesh.MshFileVersion = 2.2;
+//Mesh.MshFileVersion = 2.2;
 Mesh.SaveAll = 0;
 // Parameter für die Netzdichte (kleiner = feiner)
-lc = 0.01;
+lc = 0.25;
 
 // Vier Eckpunkte (Ursprung + 1x1 Quadrat)
 Point(1) = {0.0, 0.0, 0.0, lc};

@@ -1,75 +1,28 @@
 
-function smallDet(M::SMatrix{2,2,Float64,4})
-	@inbounds return (M[1,1]*M[2,2] - M[1,2]*M[2,1])
-end
-function smallDet(M::SMatrix{3,3,Float64,9})
-	@inbounds return (M[1,1]*(M[2,2]*M[3,3]-M[2,3]*M[3,2]) - M[1,2]*(M[2,1]*M[3,3]-M[2,3]*M[3,1]) + M[1,3]*(M[2,1]*M[3,2]-M[2,2]*M[3,1]))
-end
-
-function Blin0(::Type{Tri{2, 3, NIPs, 6}}, gradN::SMatrix{3,2,Float64,6}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]
-    ]
-end
-function Blin0(::Type{Tri{2,6,NIPs,12}}, gradN::SMatrix{6,2,Float64,12}) where {NIPs}
-    return @SMatrix [
-        gradN[1,1]  0.0        gradN[2,1]  0.0        gradN[3,1]  0.0 			gradN[4,1]  0.0        gradN[5,1]  0.0        gradN[6,1]  0.0	
-        0.0         gradN[1,2] 0.0         gradN[2,2] 0.0         gradN[3,2]	0.0         gradN[4,2] 0.0         gradN[5,2] 0.0         gradN[6,2]
-        gradN[1,2]  gradN[1,1] gradN[2,2]  gradN[2,1] gradN[3,2]  gradN[3,1]	gradN[4,2]  gradN[4,1] gradN[5,2]  gradN[5,1] gradN[6,2]  gradN[6,1]
-    ]
-end
-
-function MaterialStiffness(::Type{Val{2}}, E, ν)
-	fac = E/((1+ν)*(1-2*ν))
-	return fac*SMatrix{3,3,Float64,9}(1-ν,ν,0.,ν,1-ν,0.,0.,0.,(1-2*ν)/2.0)
-end
-
-function response(εtr, εpl, ΔT=0.0)
-	E = 1e6
-	ν = 0.25
-	ℂ = MaterialStiffness(Val{2}, E, ν)
-	αT = SVector{3,Float64}(1e-5,1e-5,0.0)    
-	return σtr = ℂ * (εtr - εpl - αT.*ΔT), εpl
-end
+#function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+#    ℂ = MaterialStiffness(Val{2}, matpars)
+#    αT = thermal_expansivity(Val{2}, matpars)
+#	return ℂ * (εtr - αT.*ΔT), εpl
+#end
 
 using LinearAlgebra, StaticArrays
 
-function _response(εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
-    # Materialparameter
-    E = 2.1e11
-    ν = 0.3
-    σy = 200.0
+function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+    E,ν,σy = matpars.E, matpars.ν, matpars.σy
     G  = E / (2*(1+ν))
-
-    # 2D Elastizitätsmatrix (plane strain)
-    ℂ = MaterialStiffness(Val{2}, E, ν)
-    αT = SVector{3,Float64}(1e-5,1e-5,0.0)
-
-    # Trialspannung
+    ℂ = MaterialStiffness(Val{2}, matpars)
+    αT = thermal_expansivity(Val{2}, matpars)
     σtr = ℂ * (εtr - εpl - αT.*ΔT)
-
-    # Deviatorische Spannung (2D)
     p = (σtr[1] + σtr[2]) / 3.0
     s = σtr .- SVector(p, p, 0.0)
-
-    # Von Mises Spannung
     seq = sqrt(1.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2) / 2)
-    #J2 = 0.5 * (s[1]^2 + s[2]^2 + 2*s[3]^2)
-    #seq = sqrt(3 * J2)
-
     f = seq - σy
-
     if f <= 0
-        # elastisch
         σ = σtr
         εpltr = εpl
     else
-        # plastisch
         n = s / (sqrt(s[1]^2 + s[2]^2 + 2*s[3]^2))
-        #n = s / sqrt(2 * J2)
-        Δγ = f / (3.0*G)  # ohne Verfestigung
+        Δγ = f / (3.0*G)
         s_new = s - 2G * Δγ * n
         σ = s_new .+ SVector(p, p, 0.0)
         εpltr = εpl .+ Δγ * n
@@ -93,27 +46,30 @@ end
 	end
 end
 
-function ipStiffness(state, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
+function ipStiffness(state, matpars, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
-	ℂnum = grad(x->response(x, εpl, ΔT), εtr)
+	ℂnum = grad(x->response(matpars, x, εpl, ΔT), εtr)
 	dVw = detJ*w
 	return 𝐁tr*ℂnum*𝐁*dVw
 end
 
-function ipRint(state, 𝐁, detJ, w)
+function ipRint(state, matpars, 𝐁, 𝐍, nodalU, εpl, detJ, w, X0, actt, ΔT=0.0)
 	dVw = detJ*w
-	return transpose(𝐁)*state.σtr*dVw
+	εtr = 𝐁*nodalU
+	σtr = response(matpars, εtr, εpl, ΔT)[1]
+	b = transpose(NMat(𝐍))*bodyforceM(X0, matpars, actt)*matpars.ϱ
+	return transpose(𝐁)*σtr*dVw - b*dVw
 end
 
-@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, 𝐁s, nodalU, εpls, detJs, wips) where {NIPs,NNODES,DIM}
+@generated function elStiffness(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, matpars, 𝐁s, 𝐍s, nodalU, εpls, detJs, wips, X0s, actt) where {NIPs,NNODES,DIM}
 	DIMTimesNNODES = DIM*NNODES
 	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRint(state[$ip], 𝐁s[$ip], detJs[$ip], wips[$ip])
-            Kel += ipStiffness(state[$ip], 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
+			Rel += ipRint(state[$ip], matpars, 𝐁s[$ip], 𝐍s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip], X0s[$ip], actt)
+            Kel += ipStiffness(state[$ip], matpars, 𝐁s[$ip], nodalU, εpls[$ip], detJs[$ip], wips[$ip])
 		end)
 	end
 	return quote
@@ -124,29 +80,66 @@ end
 	end
 end
 
-function _elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
+function elStiffnessVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, dofmap, U, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	eldofs = dofmap[SVector{DIM,Int}(1:DIM),el.inds][:]
 	nodalU = U[eldofs]
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	#X0s = ntuple(ip->elX0*𝐍s[ip], NIPs)
+	#Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
+	#detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	#@assert all(detJs .> 0) "error: det(J) < 0"
+	#invJs = ntuple(ip->inv(Js[ip]), NIPs)
+	#grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
+	#𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = DetJs(Js)
 	@assert all(detJs .> 0) "error: det(J) < 0"
-	invJs = ntuple(ip->inv(Js[ip]), NIPs)
-	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	𝐁s = ntuple(ip->Blin0(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s[ip]), NIPs)
+	invJs = elInvJs(Js)
+	grad𝐍s = Grad𝐍s(d𝐍s, invJs)
+	𝐁s = el𝐁s(Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, grad𝐍s)
 	if actt == 1
 		εpls = ntuple(ip->SVector{3,Float64}(0.,0.,0.), NIPs)
 	else
 		εpls = ntuple(ip->el.state.state[ip].εpl[actt-1], NIPs)
 	end
-	return 𝐁s, grad𝐍s, nodalU, εpls, detJs, wips
+	return 𝐁s, 𝐍s, nodalU, εpls, detJs, X0s
 end
 
-function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐁s, _, nodalU, εpls, detJs, wips = _elStiffness(el, dofmap, U, shapeFuns, actt)
-	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, 𝐁s, nodalU, εpls, detJs, wips)
+function elStiffness(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, matpars, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	𝐁s, 𝐍s, nodalU, εpls, detJs, X0s = elStiffnessVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, actt)
+	return elStiffness(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, el.matpars, 𝐁s, 𝐍s, nodalU, εpls, detJs, shapeFuns.wips, X0s, actt)
+end
+
+function elFM(fun::Function, 𝐍, X0, detJ, w::Float64, actt)
+	dVw = detJ*w
+	return transpose(NMat(𝐍))*fun(X0, actt)*dVw
+end
+
+@generated function elFM(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, fun, 𝐍s, X0s, detJs, wips, actt) where {NIPs, NNODES, DIM}
+	DIMTimesNNODES = DIM*NNODES
+	body = Expr(:block)
+	for ip in 1:NIPs
+		push!(body.args, quote
+			qe += elFM(fun, 𝐍s[$ip], X0s[$ip], detJs[$ip], wips[$ip], actt)
+		end)
+	end
+	return quote
+        qe = zero(SVector{$DIMTimesNNODES,Float64})
+        $body
+        return qe
+	end
+end
+
+function elFM(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM2,Float64,DIM2timesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, DIM2, NNODES, NIPs, DIMtimesNNodes, DIM2timesNNodes}
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = ntuple(ip->norm(Js[ip]), NIPs)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	return elFM(Val{NIPs}, Val{NNODES}, Val{DIM}, fun, 𝐍s, X0s, detJs, wips, actt)
+end
+
+function elFM(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elFM(fun, el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
 end
 
 function ipMass(𝐍, detJ, w)
@@ -169,15 +162,19 @@ end
 	end
 end
 
+function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = DetJs(Js)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	return elMass(Val{NIPs}, Val{NNODES}, 𝐍s, detJs, wips)
+end
+
 function elMass(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns) where {DIM, NNODES, NIPs, DIMtimesNNodes}
 	𝐍s = shapeFuns.𝐍s
 	d𝐍s = shapeFuns.d𝐍s
 	wips = shapeFuns.wips
 	elX0 = el.nodes
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
-	@assert all(detJs .> 0) "error: det(J) < 0"
-	return elMass(Val{NIPs}, Val{NNODES}, 𝐍s, detJs, wips)
+	return elMass(el, d𝐍s, 𝐍s, elX0, wips)
 end
 
 function elPost(𝐍, vals, detJ, w::Float64)
@@ -186,7 +183,6 @@ function elPost(𝐍, vals, detJ, w::Float64)
 end
 
 @generated function elPost(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
-	#println(typeof(wips)," ",wips)
 	NNODES3 = NNODES*3
 	body = Expr(:block)
 	for ip in 1:NIPs
@@ -203,26 +199,26 @@ end
 	end
 end
 
-function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐍s = shapeFuns.𝐍s
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	Js = Jacobis(elX0, d𝐍s)
+	detJs =  DetJs(Js)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elPost(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
 end
 
-function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, 𝐁, nodalU, actt)
+function elPost(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elPost(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
+end
+
+function updateTrialStates!(::Type{LinearElasticity}, state::IPStateVars2D, matpars, 𝐁, nodalU, actt)
 	εtr = 𝐁*nodalU
 	εpl = actt>1 ? state.εpl[actt-1] : zeros(SVector{3,Float64})
-	state.σtr,state.εpltr = response(εtr, εpl)
+	state.σtr,state.εpltr = response(matpars, εtr, εpl)
 	return nothing
 end
 
 function updateTrialStates!(::Type{LinearElasticity}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐁s, _, nodalU, _, _, _ = _elStiffness(el, dofmap, U, shapeFuns, actt)
-	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, 𝐁, nodalU, actt), el.state.state, 𝐁s)
+	𝐁s, _, nodalU, _, _, _ = elStiffnessVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, actt)
+	foreach((ipstate,𝐁)->updateTrialStates!(LinearElasticity, ipstate, el.matpars, 𝐁, nodalU, actt), el.state.state, 𝐁s)
 	return nothing
 end

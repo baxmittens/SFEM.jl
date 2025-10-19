@@ -1,28 +1,32 @@
 
-function ipStiffnessT(state, grad𝐍_temp, 𝐍, nodalT, detJ, w, Δt)
-	𝐤 = SMatrix{2,2,Float64,4}(50.,0.,0.,50.)
-	#c_p = 450.0
-	c_p = 0.0
-    ϱ = 7000.0
+function ipStiffnessT(state, matpars, grad𝐍_temp, 𝐍_temp, nodalT, detJ, w, Δt)
+	𝐤 = thermal_conductivity(Val{2}, matpars)
+	c_p,ϱ = matpars.c_p,matpars.ϱ
 	dVw = detJ*w
 	M = ϱ*c_p*𝐍*transpose(𝐍)*dVw/Δt
 	K_TT = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
+	M = 1/Δt*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw
 	return M+K_TT
 end
 	
-function ipRintT(state, grad𝐍_temp, detJ, w, Δt) # needs update
+function ipRintT(state, matpars, grad𝐍_temp, 𝐍_temp, nodalT, nodalTm1, detJ, w, Δt, X0, actt)
+	𝐤 = thermal_conductivity(Val{2}, matpars)
+	c_p,ϱ = matpars.c_p,matpars.ϱ
 	dVw = detJ*w
-	return (grad𝐍_temp*state.qtr+state.MΔTtr/Δt)*dVw
+	MΔT = 1.0/Δt*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*(nodalT-nodalTm1)*dVw
+	q = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*nodalT*dVw
+	qbar = 𝐍_temp*bodyforceT(X0, matpars, actt)*dVw
+	return MΔT+q-qbar
 end
 
-@generated function elStiffnessT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, grad𝐍s_temp, 𝐍s, nodalT, detJs, wips, Δt) where {NIPs,NNODES,DIM}
+@generated function elStiffnessT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, ::Type{Val{DIM}}, state, matpars, grad𝐍s_temp, 𝐍s, nodalT, nodalTm1, detJs, wips, Δt, X0s, actt) where {NIPs,NNODES,DIM}
 	DIMTimesNNODES = NNODES
 	DIMTimesNNODESSQ = DIMTimesNNODES*DIMTimesNNODES
 	body = Expr(:block)
 	for ip in 1:NIPs
 		push!(body.args, quote
-			Rel += ipRintT(state[$ip], grad𝐍s_temp[$ip], detJs[$ip], wips[$ip], Δt)
-            Kel += ipStiffnessT(state[$ip], grad𝐍s_temp[$ip], 𝐍s[$ip], nodalT, detJs[$ip], wips[$ip], Δt)
+			Rel += ipRintT(state[$ip], matpars, grad𝐍s_temp[$ip], 𝐍s[$ip], nodalT, nodalTm1, detJs[$ip], wips[$ip], Δt, X0s[$ip], actt)
+            Kel += ipStiffnessT(state[$ip], matpars, grad𝐍s_temp[$ip], 𝐍s[$ip], nodalT, detJs[$ip], wips[$ip], Δt)
 		end)
 	end
 	return quote
@@ -33,24 +37,53 @@ end
 	end
 end
 
-function _elStiffnessT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	d𝐍s = shapeFuns.d𝐍s
-	𝐍s = shapeFuns.𝐍s
-	wips = shapeFuns.wips
-	elT0 = el.nodes
+function elStiffnessTVals(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, dofmap, U, Uprev, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
 	eldofs = dofmap[1,el.inds][:]
 	nodalT = U[eldofs]
-	Js = ntuple(ip->elT0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+	nodalTm1 = Uprev[eldofs]
+	detJs = DetJs(Js)
 	@assert all(detJs .> 0) "error: det(JM) < 0"
-	invJs = ntuple(ip->inv(Js[ip]), NIPs)
-	grad𝐍s = ntuple(ip->d𝐍s[ip]*invJs[ip], NIPs)
-	return grad𝐍s, 𝐍s, nodalT, detJs, wips
+	invJs = elInvJs(Js)
+	grad𝐍s = Grad𝐍s(d𝐍s, invJs)
+	return grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, X0s
 end
 
-function elStiffnessT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt, Δt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	vals = _elStiffnessT(el, dofmap, U, shapeFuns)
-	return elStiffnessT(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, vals..., Δt)
+function elStiffnessT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, matpars, dofmap, U, Uprev, shapeFuns, actt, Δt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, X0s = elStiffnessTVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, Uprev, actt)
+	return elStiffnessT(Val{NIPs}, Val{NNODES}, Val{DIM}, el.state.state, matpars, grad𝐍s, 𝐍s, nodalT, nodalTm1, detJs, shapeFuns.wips, Δt, X0s, actt)
+end
+
+function elFT(fun::Function, 𝐍, X0, detJ, w::Float64, actt)
+	dVw = detJ*w
+	return 𝐍*fun(X0, actt)*dVw
+end
+
+@generated function elFT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, fun, 𝐍s, X0s, detJs, wips, actt) where {NIPs, NNODES}
+	body = Expr(:block)
+	for ip in 1:NIPs
+		push!(body.args, quote
+			qe += elFT(fun, 𝐍s[$ip], X0s[$ip], detJs[$ip], wips[$ip], actt)
+		end)
+	end
+	return quote
+        qe = zero(SVector{NNODES,Float64})
+        $body
+        return qe
+	end
+end
+
+function elFT(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM2,Float64,DIM2timesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, DIM2, NNODES, NIPs, DIMtimesNNodes, DIM2timesNNodes}
+	X0s = elX0s(elX0, 𝐍s)
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = ntuple(ip->norm(Js[ip]), NIPs)
+	@assert all(detJs .> 0) "error: det(J) < 0"
+	return elFT(Val{NIPs}, Val{NNODES}, fun, 𝐍s, X0s, detJs, wips, actt)
+end
+
+function elFT(fun::Function, el::Line{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elFT(fun, el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
 end
 
 @generated function elPostT(::Type{Val{NIPs}}, ::Type{Val{NNODES}}, state, 𝐍s, detJs, wips, actt) where {NIPs, NNODES}
@@ -68,31 +101,26 @@ end
 	end
 end
 
-function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	𝐍s = shapeFuns.𝐍s
-	d𝐍s = shapeFuns.d𝐍s
-	wips = shapeFuns.wips
-	elX0 = el.nodes
-	Js = ntuple(ip->elX0*d𝐍s[ip], NIPs)
-	detJs = ntuple(ip->smallDet(Js[ip]), NIPs)
+function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, d𝐍s::NTuple{NIPs, SMatrix{NNODES,DIM,Float64,DIMtimesNNodes}}, 𝐍s::NTuple{NIPs, SVector{NNODES,Float64}}, elX0::SMatrix{DIM,NNODES,Float64,DIMtimesNNodes}, wips::SVector{NIPs,Float64}, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	Js = Jacobis(elX0, d𝐍s)
+	detJs = DetJs(Js)
 	@assert all(detJs .> 0) "error: det(J) < 0"
 	return elPostT(Val{NIPs}, Val{NNODES}, el.state.state, 𝐍s, detJs, wips, actt)
 end
 
-function updateTrialStates!(::Type{HeatConduction}, state::IPStateVars2D, grad𝐍_temp, 𝐍, nodalT, nodalTm1, actt)
-	𝐤 = SMatrix{2,2,Float64,4}(50.0,0.0,0.0,50.0)
-	#c_p = 450.0
-	c_p = 0.0
-    ϱ = 7000.0
+function elPostT(el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	return elPostT(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, shapeFuns.wips, actt)
+end
+
+function updateTrialStates!(::Type{HeatConduction}, state::IPStateVars2D, matpars, grad𝐍_temp, nodalT)
+	𝐤 = thermal_conductivity(Val{2}, matpars)
 	state.qtr = 𝐤*transpose(grad𝐍_temp)*nodalT
 	state.MΔTtr = ϱ*c_p*𝐍*transpose(𝐍)*(nodalT-nodalTm1)
 	return nothing
 end
 
-function updateTrialStates!(::Type{HeatConduction}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, Uprev, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
-	eldofs = dofmap[1,el.inds][:]
-	nodalTm1 = Uprev[eldofs]
-	grad𝐍s, 𝐍s, nodalT, _, _ = _elStiffnessT(el, dofmap, U, shapeFuns)
-	foreach((ipstate,grad𝐍, 𝐍)->updateTrialStates!(HeatConduction, ipstate, grad𝐍, 𝐍, nodalT, nodalTm1, actt), el.state.state, grad𝐍s, 𝐍s)
+function updateTrialStates!(::Type{HeatConduction}, el::Tri{DIM, NNODES, NIPs, DIMtimesNNodes}, dofmap, U, shapeFuns, actt) where {DIM, NNODES, NIPs, DIMtimesNNodes}
+	grad𝐍s, _, nodalT, _, _, _ = elStiffnessTVals(el, shapeFuns.d𝐍s, shapeFuns.𝐍s, el.nodes, dofmap, U, U, actt)
+	foreach((ipstate,grad𝐍)->updateTrialStates!(HeatConduction, ipstate, el.matpars,  grad𝐍, nodalT), el.state.state, grad𝐍s)
 	return nothing
 end

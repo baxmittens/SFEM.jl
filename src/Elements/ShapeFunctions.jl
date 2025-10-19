@@ -37,8 +37,7 @@ struct EvaluatedShapeFunctions{DIM, NNodes, NIPs, NNodestimesDIM}
     wips::SVector{NIPs, Float64}
 end
 
-
-function EvaluatedShapeFunctions(refel::C, intrulefun::F, nips::Int) where {C<:ContinuumRefElement, F<:Function}
+function EvaluatedShapeFunctions(refel::C, intrulefun::F, nips::Int) where {C<:TriRefElement, F<:Function}
     N = dim(refel)
     ((ξs,ηs),w) = intrulefun(N, nips)
     evaledshapefuns = ntuple(
@@ -52,6 +51,26 @@ function EvaluatedShapeFunctions(refel::C, intrulefun::F, nips::Int) where {C<:C
         SMatrix{nnodes(refel),N,Float64,nnodes(refel)*N}(flatten_tuple(ntuple(dir->
             ntuple(nnode->
                 evaluate(DensePolynomials.diff(refel.shapeFuns[nnode], dir), SVector{N,Float64}(ξs[nip], ηs[nip])), 
+            nnodes(refel)), 
+        N))), 
+    length(ξs))
+    return EvaluatedShapeFunctions(evaledshapefuns, evaledshapefunderivs, w)
+end
+
+function EvaluatedShapeFunctions(refel::C, intrulefun::F, nips::Int) where {C<:LineRefElement, F<:Function}
+    N = dim(refel)
+    ((ξs,),w) = intrulefun(N, nips)
+    evaledshapefuns = ntuple(
+        j->SVector{nnodes(refel),Float64}(
+            ntuple(
+                i->evaluate(refel.shapeFuns[i], SVector{N,Float64}(ξs[j])), 
+            nnodes(refel))), 
+        length(ξs)
+    )
+    evaledshapefunderivs = ntuple(nip->
+        SMatrix{nnodes(refel),N,Float64,nnodes(refel)*N}(flatten_tuple(ntuple(dir->
+            ntuple(nnode->
+                evaluate(DensePolynomials.diff(refel.shapeFuns[nnode], dir), SVector{N,Float64}(ξs[nip])), 
             nnodes(refel)), 
         N))), 
     length(ξs))
