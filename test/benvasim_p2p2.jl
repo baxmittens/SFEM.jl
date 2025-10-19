@@ -147,7 +147,7 @@ end
 # Sample over line xStart ... xEnd
 xStart = SVector{2,Float64}(0.0,0.0)
 xEnd = SVector{2,Float64}(25.0,12.5)
-nsamplepoints = 200
+nsamplepoints = 500
 valkeys_line = [:U_1, :U_2, :σ_1, :σ_2, :σ_3, :ΔT_1]
 valkeys_dom = [[:U, :σ,],[:ΔT, :q]]
 

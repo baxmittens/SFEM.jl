@@ -2,18 +2,42 @@ using SparseArrays
 
 function build_index_mapping!(dom::Domain)
     I, J, A = dom.mma.I, dom.mma.J, first(dom.mma.Kglob)
+    idxmap = dom.mma.idxmap
+    colptr, rowval = A.colptr, A.rowval
     nnz_total = length(I)
-    lookup = Dict{Tuple{Int,Int},Int}()
-    for col in 1:size(A,2)
-        for p in A.colptr[col]:(A.colptr[col+1]-1)
-            lookup[(A.rowval[p], col)] = p
+
+    lookup = Dict{UInt64, Int}()
+    sizehint!(lookup, length(rowval))
+
+    @inbounds for col in 1:size(A,2)
+        for p in colptr[col]:(colptr[col+1]-1)
+            key = (UInt64(rowval[p]) << 32) | UInt64(col)
+            lookup[key] = p
         end
     end
-    for k in 1:nnz_total
-        dom.mma.idxmap[k] = lookup[(I[k], J[k])]
+
+    @threads for k in 1:nnz_total
+        @inbounds key = (UInt64(I[k]) << 32) | UInt64(J[k])
+        @inbounds idxmap[k] = lookup[key]
     end
+
     return nothing
 end
+
+#function build_index_mapping!(dom::Domain)
+#    I, J, A = dom.mma.I, dom.mma.J, first(dom.mma.Kglob)
+#    nnz_total = length(I)
+#    lookup = Dict{Tuple{Int,Int},Int}()
+#    for col in 1:size(A,2)
+#        for p in A.colptr[col]:(A.colptr[col+1]-1)
+#            lookup[(A.rowval[p], col)] = p
+#        end
+#    end
+#    for k in 1:nnz_total
+#        dom.mma.idxmap[k] = lookup[(I[k], J[k])]
+#    end
+#    return nothing
+#end
 
 @generated function _dofmap(::Type{Val{DIM}}, ::Type{Val{NNODES2}}, dofmap, elinds) where {DIM,NNODES2}
     @assert isapprox(round(NNODES2/DIM), NNODES2/DIM)
@@ -91,7 +115,8 @@ function assemble!(dom::Domain{Tuple{ProcessDomain{P,T1,T2,E1,E2,DMD1}}}) where 
     if isempty(dom.mma.Kglob)
         assemble!(dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.elFn, Val{DMD1})
         push!(dom.mma.Kglob,SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr))
-        build_index_mapping!(dom)
+        @info "Build index mapping"
+        @time build_index_mapping!(dom)
     else
         assemble!(first(dom.mma.Kglob), dom.mma, pdom.dofmap, pdom.els, pdom.els_neumann, dom.mma.elMats, pdom.mma.elFn, Val{DMD1})
     end
@@ -190,7 +215,8 @@ function assemble!(dom::Domain{Tuple{PD1,PD2}}) where {PD1,PD2}
     if isempty(dom.mma.Kglob)
         assemble!(dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, pdom1.els_neumann, pdom2.els_neumann, dom.mma.elMats, pdom1.mma.elFn, pdom2.mma.elFn)
         push!(dom.mma.Kglob,SparseArrays.sparse!(dom.mma.I, dom.mma.J, dom.mma.V, dom.ndofs, dom.ndofs, +, dom.mma.klasttouch, dom.mma.csrrowptr, dom.mma.csrcolval, dom.mma.csrnzval, dom.mma.csccolptr, dom.mma.Iptr, dom.mma.Vptr))
-        build_index_mapping!(dom)
+        @info "Build index mapping"
+        @time build_index_mapping!(dom)
     else
         assemble!(first(dom.mma.Kglob), dom.mma, pdom1.dofmap, pdom2.dofmap, pdom1.els, pdom2.els, pdom1.els_neumann, pdom2.els_neumann, dom.mma.elMats, pdom1.mma.elFn, pdom2.mma.elFn)
     end
