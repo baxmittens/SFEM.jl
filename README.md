@@ -1,12 +1,12 @@
-# SFEM
+# SFEM.jl
 Statically typed and sized finite element implementation
 
 ## Installation
 
 In the terminal
 ```
-git clone https://github.com/baxmittens/SFEM.git
-cd SFEM/test
+git clone https://github.com/baxmittens/SFEM.jl.git
+cd SFEM.jl/test
 julia
 ```
 
