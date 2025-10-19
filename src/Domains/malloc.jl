@@ -24,8 +24,6 @@ end
 
 struct DomainMalloc{ENNODES,ENNODESSQ}
 	U::Vector{Float64}
-	Uprev::Vector{Float64}
-	Utmp::Vector{Float64}
 	ΔU::Vector{Float64}
 	Uprev::Vector{Float64}
 	F::Vector{Float64}

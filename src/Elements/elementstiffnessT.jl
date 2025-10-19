@@ -3,7 +3,6 @@ function ipStiffnessT(state, matpars, grad𝐍_temp, 𝐍_temp, nodalT, detJ, w,
 	𝐤 = thermal_conductivity(Val{2}, matpars)
 	c_p,ϱ = matpars.c_p,matpars.ϱ
 	dVw = detJ*w
-	M = ϱ*c_p*𝐍*transpose(𝐍)*dVw/Δt
 	K_TT = grad𝐍_temp*𝐤*transpose(grad𝐍_temp)*dVw
 	M = 1/Δt*ϱ*c_p*𝐍_temp*transpose(𝐍_temp)*dVw
 	return M+K_TT
