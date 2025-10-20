@@ -11,7 +11,7 @@ import SFEM.Domains: ProcessDomain, Domain, solve!, setBCandUCMaps!, init_loadst
 using StaticArrays
 using LinearAlgebra
 
-plotting=false
+plotting=true
 
 ### Load mesh
 meshfilepath = "../models/2d/beam_fine_tri10.msh"
@@ -112,7 +112,7 @@ linelasticity = ProcessDomain(LinearElasticity, nodes, connectivity, els1, dofma
 heatconduction = ProcessDomain(HeatConduction, nodes, connectivity, els2, dofmap2, nts, Val{1}, ElLineType, els_neumann=neumann_els_M, fun_neumann=fun_neumann_T)
 ###
 ### Create Domain
-dom = Domain((linelasticity,), ts, dirichletM=dirichletM, dirichletT=dirichletT)
+dom = Domain((linelasticity,heatconduction), ts, dirichletM=dirichletM, dirichletT=dirichletT)
 ###
 ### Solve
 @time tsolve!(dom)

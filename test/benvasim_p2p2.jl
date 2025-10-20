@@ -54,7 +54,7 @@ states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity];
 import SFEM.Elements: bodyforceM, bodyforceT 
 # Thermo ts 0...31557600000 qs 51...0
 function fun_canister(x, matpars, actt, ts=ts)
-	if ts[actt] > 31557600000 || act < 2
+	if ts[actt] > 31557600000 || actt < 2 || matpars.materialID != 0
 		return 0.0
 	else
 		return lin_func(ts[actt],0.0,51.0,31557600000.0,0) 

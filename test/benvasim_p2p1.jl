@@ -81,7 +81,7 @@ states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity1];
 import SFEM.Elements: bodyforceM, bodyforceT 
 # Thermo ts 0...31557600000 qs 51...0
 function fun_canister(x, matpars, actt, ts=ts)
-	if ts[actt] > 31557600000 || act < 2
+	if ts[actt] > 31557600000 || actt < 2 || matpars.materialID != 0
 		return 0.0
 	else
 		return lin_func(ts[actt],0.0,51.0,31557600000.0,0) 
@@ -182,7 +182,7 @@ end
 # Sample over line xStart ... xEnd
 xStart = SVector{2,Float64}(0.0,0.0)
 xEnd = SVector{2,Float64}(25.0,12.5)
-nsamplepoints = 500
+nsamplepoints = 2000
 valkeys_line = [:U_1, :U_2, :σ_1, :σ_2, :σ_3, :ΔT_1]
 valkeys_dom = [[:U, :σ,],[:ΔT, :q]]
 #valkeys_dom = [[:ΔT, :q]]

@@ -55,7 +55,7 @@ states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity];
 import SFEM.Elements: bodyforceM, bodyforceT 
 # Thermo ts 0...31557600000 qs 51...0
 function fun_canister(x, matpars, actt, ts=ts)
-	if ts[actt] > 31557600000 || act < 2
+	if ts[actt] > 31557600000 || actt < 2 || matpars.materialID != 0
 		return 0.0
 	else
 		return lin_func(ts[actt],0.0,51.0,31557600000.0,0) 
@@ -120,6 +120,7 @@ end
 # Define boundary functions
 # Mechanics
 fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
 # Thermo
 #fun_neumann_T(x, actt, ts=ts) = 0.0
 ###
