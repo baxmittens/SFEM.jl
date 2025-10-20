@@ -54,7 +54,14 @@ states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity];
 ## define body forces as function
 # Thermo ts 0...31557600000 qs 51...0
 import SFEM.Elements: bodyforceM, bodyforceT 
-bodyforceT(x, matpars, actt, ts=ts) = matpars.materialID==0 && actt > 2 && actt < 27 ? lin_func(ts[actt],0.0,51.0,31557600000.0,0) : 0.0
+function fun_canister(x, matpars, actt, ts=ts)
+	if ts[actt] > 31557600000 || act < 2
+		return 0.0
+	else
+		return lin_func(ts[actt],0.0,51.0,31557600000.0,0) 
+	end
+end
+bodyforceT(x, matpars, actt, ts=ts) = fun_canister(x, matpars, actt, ts)
 # Mechanic no body force
 bodyforceM(x, matpars, actt, ts=ts) = actt > 1 ? SVector{2,Float64}(0.0,0.0) : SVector{2,Float64}(0.0,0.0)
 ## Material 
