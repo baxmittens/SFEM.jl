@@ -30,4 +30,6 @@ In Julia
 include("install.jl") # takes some minutes
 include("beam_medium_p3p1.jl")
 ```
+
+## Output
 <img width="1539" height="839" alt="image" src="https://github.com/user-attachments/assets/b0090a34-c5b2-4af1-ad20-494bf5e183dd" />
