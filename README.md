@@ -1,7 +1,7 @@
 # SFEM.jl
 Statically typed and sized finite element implementation
 
-Implemented is a thermo-mechanically coupled elastoplastic model. The time discretization is backwards Euler, and the solution scheme is a standard Newton-Raphson method for triangles up to order 3.
+Implemented is a thermo-mechanically coupled elastoplastic model for triangles up to order 3. The time discretization is backwards Euler, and the solution scheme is a standard Newton-Raphson method.
 
 The objective was to write a relatively simple standard finite element discretization with emphasis on computing speed, which is realized by heavily relying on [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl). The src-folder contains just under 2000 lines of code.
 
