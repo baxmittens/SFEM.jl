@@ -1,13 +1,13 @@
 
-#function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
-#    ℂ = MaterialStiffness(Val{2}, matpars)
-#    αT = thermal_expansivity(Val{2}, matpars)
-#	return ℂ * (εtr - αT.*ΔT), εpl
-#end
+function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+    ℂ = MaterialStiffness(Val{2}, matpars)
+    αT = thermal_expansivity(Val{2}, matpars)
+	return ℂ * (εtr - αT.*ΔT), εpl
+end
 
 using LinearAlgebra, StaticArrays
 
-function response(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
+function response1(matpars, εtr::SVector{3,Float64}, εpl::SVector{3,Float64}, ΔT=0.0)
     E,ν,σy = matpars.E, matpars.ν, matpars.σy
     G  = E / (2*(1+ν))
     ℂ = MaterialStiffness(Val{2}, matpars)
@@ -49,7 +49,8 @@ end
 function ipStiffness(state, matpars, 𝐁, nodalU, εpl, detJ, w, ΔT=0.0)
 	𝐁tr = transpose(𝐁)
 	εtr = 𝐁*nodalU
-	ℂnum = grad(x->response(matpars, x, εpl, ΔT), εtr)
+	#ℂnum = grad(x->response(matpars, x, εpl, ΔT), εtr)
+	ℂnum = MaterialStiffness(Val{2}, matpars)
 	dVw = detJ*w
 	return 𝐁tr*ℂnum*𝐁*dVw
 end

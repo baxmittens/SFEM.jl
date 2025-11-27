@@ -38,7 +38,7 @@ nips_neumann = 6
 ElType = Tri{2,nnodes_element,nips,2*nnodes_element}
 ElLineType = Line{2,nnodes_neumann,nips_neumann,2*nnodes_neumann}
 # Time stepping
-ts = collect(0.0:1e4:3e4)
+ts = collect(0.0:1e6:3e6)
 nts = length(ts)
 # init state variables per nip and timestep
 states = [ElementStateVars2D(Val{nips},Val{nts}) for elinds in connectivity];
@@ -54,7 +54,7 @@ els2 = ElType[Tri10(SMatrix{2,nnodes_element,Float64,2*nnodes_element}(nodes[eli
 ## Dirichlet
 # Mechanics
 function dirichletM(ΔU, U, nodes, dofmap, actt)
-	ls = range(0,-0.1,nts)
+	ls = range(0,-0.3,nts)
 	Uval = ls[actt]
 	inds_left = findall(x->isapprox(x[1],0.0,atol=1e-9), eachrow(nodes))
 	inds_right = findall(x->isapprox(x[1],10.0,atol=1e-9), eachrow(nodes))
@@ -93,7 +93,7 @@ for el in els1
 end
 # Define boundary functions
 # Mechanics
-fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
 # Thermo
 fun_neumann_T(x, actt, ts=ts) = 10.0
 ###
@@ -127,9 +127,9 @@ if !isdefined(Main,:sampleResult!)
 end
 
 # Sample over line xStart ... xEnd
-xStart = SVector{2,Float64}(1.0,0.0)
-xEnd = SVector{2,Float64}(1.0,1.0)
-nsamplepoints = 40
+xStart = SVector{2,Float64}(.5,0.0)
+xEnd = SVector{2,Float64}(.5,1.0)
+nsamplepoints = 500
 valkeys_line = [:U_1, :U_2, :σ_1, :σ_2, :σ_3, :ΔT_1, :εpl_1, :εpl_2, :εpl_3]
 valkeys_dom = [[:U, :σ, :εpl],[:ΔT, :q]]
 

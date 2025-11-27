@@ -119,8 +119,8 @@ for el in els1
 end
 # Define boundary functions
 # Mechanics
-fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
-#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
+#fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,-14000000.0)
+fun_neumann_M(x, actt, ts=ts) = SVector{2,Float64}(0.0,0.0)
 # Thermo
 #fun_neumann_T(x, actt, ts=ts) = 0.0
 ###
